@@ -8,6 +8,7 @@ import {
 } from '../challenges';
 import { GeoThumbnailSVG } from '../components/geometry/GeoThumbnailSVG';
 import { MathText } from '../components/math/MathText';
+import { CHALLENGES_3D } from '../geometry3d/challenges3d';
 import { useApp } from '../store/AppContext';
 import type { CognitiveLevel, Difficulty, ProgramLabel } from '../validators/types';
 
@@ -47,12 +48,28 @@ const COGNITIVE_OPTIONS: Array<CognitiveLevel | 'Tất cả'> = [
 ];
 
 export const GradesPage: React.FC = () => {
-  const { progressMap, teacherPreviewMode, openChallenge } = useApp();
+  const { progressMap, progress3DMap, teacherPreviewMode, openChallenge, openChallenge3D } = useApp();
   const [quickTrack, setQuickTrack] = useState<QuickTrackFilter>('Tất cả');
   const [programFilter, setProgramFilter] = useState<ProgramLabel | 'Tất cả'>('Tất cả');
   const [difficulty, setDifficulty] = useState<Difficulty | 'Tất cả'>('Tất cả');
   const [cognitive, setCognitive] = useState<CognitiveLevel | 'Tất cả'>('Tất cả');
   const [query, setQuery] = useState('');
+
+  const filtered3D = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return CHALLENGES_3D.filter((ch) => {
+      if (quickTrack === 'Kiến thức nền tảng' || quickTrack === 'Lớp 10') return false;
+      if (quickTrack === 'Lớp 11' && ch.curriculumTag !== 'Toán 11') return false;
+      if (quickTrack === 'Lớp 12' && ch.curriculumTag !== 'Toán 12') return false;
+      if (quickTrack === 'Mở rộng và Olympic' && ch.curriculumTag !== 'Kiến thức mở rộng') return false;
+      if (programFilter !== 'Tất cả' && ch.curriculumTag !== programFilter) return false;
+      if (difficulty !== 'Tất cả' && ch.difficulty !== difficulty) return false;
+      if (q && !ch.title.toLowerCase().includes(q) && !ch.description.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [quickTrack, programFilter, difficulty, query]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -204,45 +221,78 @@ export const GradesPage: React.FC = () => {
         )}
       </div>
 
-      {/* Filtered Challenge Grid or Honest Grade 12 Academic Note */}
+      {/* Filtered 3D Spatial & Oxyz Section (Toán 11 & Toán 12) */}
+      {filtered3D.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              Hình học Không gian 3D &amp; Hệ tọa độ Oxyz ({filtered3D.length} thử thách)
+            </h2>
+            <span className="text-xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-lg">
+              Chương trình Toán 11 &amp; Toán 12 (GDPT 2018)
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered3D.map((ch) => {
+              const stars = progress3DMap[ch.id]?.stars ?? 0;
+              return (
+                <div
+                  key={ch.id}
+                  className="rounded-2xl border border-sky-200/80 dark:border-sky-800/70 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between gap-3 hover:border-sky-500 transition-colors"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs font-semibold text-sky-700 dark:text-sky-400">
+                      <span>3D · Cấp {ch.levelId} · Bài {ch.order} · {ch.curriculumTag}</span>
+                      <span>{ch.difficulty}</span>
+                    </div>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-base">{ch.title}</h3>
+                    <p className="text-[15px] text-slate-600 dark:text-slate-300 line-clamp-2">
+                      <MathText text={ch.description} />
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-0.5">
+                      {[1, 2, 3].map((s) => (
+                        <Star
+                          key={s}
+                          className={`w-4 h-4 ${
+                            s <= stars ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-700'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openChallenge3D(ch.id)}
+                      className="text-[15px] font-semibold text-sky-700 dark:text-sky-400 hover:underline"
+                    >
+                      Mở dựng 3D →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Filtered 2D Challenge Grid or Honest Grade 12 Academic Note */}
       {filtered.length === 0 ? (
         quickTrack === 'Lớp 12' || programFilter === 'Toán 12' ? (
-          <div className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/30 p-6 space-y-3">
+          <div className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/30 p-5 space-y-2">
             <div className="flex items-center gap-2 font-bold text-base text-sky-900 dark:text-sky-200">
               <Info className="w-5 h-5 shrink-0" />
               Ghi chú chương trình Toán 12 (GDPT 2018)
             </div>
             <p className="text-[15px] text-slate-700 dark:text-slate-200 leading-relaxed">
-              Chương trình Toán 12 hiện hành tập trung vào Giải tích và Hình học tọa độ trong không gian (Oxyz), không có chuyên đề dựng hình phẳng bắt buộc bằng thước và compa. Để đảm bảo tính chính xác khoa học, hệ thống không gán nhãn Toán 12 cho các bài dựng hình phẳng cổ điển. Học sinh lớp 12 có thể ôn luyện và phát triển tư duy hình học qua nhóm <strong>Kiến thức nền tảng</strong> hoặc <strong>Mở rộng và Olympic</strong>.
+              Chương trình Toán 12 tập trung vào Hình học tọa độ trong không gian Oxyz (được hiển thị ở mục Hình học Không gian 3D phía trên), không có chuyên đề dựng hình phẳng bằng thước và compa.
             </p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickTrack('Kiến thức nền tảng');
-                  setProgramFilter('Tất cả');
-                }}
-                className="px-4 py-2 rounded-xl bg-teal-700 text-white text-[15px] font-semibold hover:bg-teal-800"
-              >
-                Xem Kiến thức nền tảng
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickTrack('Mở rộng và Olympic');
-                  setProgramFilter('Tất cả');
-                }}
-                className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-800 dark:text-slate-100"
-              >
-                Xem Mở rộng và Olympic
-              </button>
-            </div>
           </div>
-        ) : (
+        ) : filtered3D.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-[15px] text-slate-500">
             Không tìm thấy thử thách nào khớp bộ lọc hiện tại.
           </div>
-        )
+        ) : null
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((ch) => {

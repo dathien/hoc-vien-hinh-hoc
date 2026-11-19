@@ -17,6 +17,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { BADGE_DEFINITIONS, RANK_TIERS } from '../data/ranksAndBadges';
+import { CHALLENGES_3D, LEVELS_3D } from '../geometry3d/challenges3d';
 import { useApp } from '../store/AppContext';
 
 const ICON_MAP = {
@@ -176,7 +177,7 @@ function downloadCertificatePng(params: {
 }
 
 export const AchievementsPage: React.FC = () => {
-  const { stats, progressMap, settings, updateSettings, drawings, arenaRooms } = useApp();
+  const { stats, stats3D, progressMap, progress3DMap, settings, updateSettings, drawings, arenaRooms, setCampaignDimension, setPage } = useApp();
 
   const badgeContext = useMemo(
     () => ({
@@ -274,6 +275,68 @@ export const AchievementsPage: React.FC = () => {
                 </div>
                 <div className="font-bold text-slate-900 dark:text-white mt-0.5 truncate">
                   {tier.title}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Separate 3D Spatial Progress & Achievements (never merged into 540-star 2D system) */}
+      <section className="rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-gradient-to-br from-sky-50/60 to-white dark:from-slate-900 dark:to-slate-900 p-6 space-y-5 no-print">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400">
+              Tiến độ Hình học Không gian 3D (Hệ thống riêng, không gộp vào 540 sao 2D)
+            </div>
+            <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">
+              Chinh phục Không gian 3D &amp; Oxyz
+            </h2>
+            <p className="text-[15px] text-slate-600 dark:text-slate-300 mt-1">
+              Hoàn thành {stats3D.completedCount}/{stats3D.totalChallenges} thử thách không gian · {stats3D.drawingsCount} bản dựng 3D đã lưu.
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right font-mono-tabular">
+              <div className="text-3xl font-black text-sky-700 dark:text-sky-400">
+                ★ {stats3D.totalStars}
+                <span className="text-lg font-medium text-slate-400"> / {stats3D.maxStars}</span>
+              </div>
+              <div className="text-xs text-slate-500">Sao hình học không gian 3D</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCampaignDimension('3d');
+                setPage('campaign');
+              }}
+              className="px-4 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700"
+            >
+              Mở thử thách 3D
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {LEVELS_3D.map((lvl) => {
+            const list = CHALLENGES_3D.filter((c) => c.levelId === lvl.id);
+            const done = list.filter((c) => (progress3DMap[c.id]?.stars ?? 0) >= 1).length;
+            const st = list.reduce((s, c) => s + (progress3DMap[c.id]?.stars ?? 0), 0);
+            return (
+              <div key={lvl.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-sky-700 dark:text-sky-400">Cấp {lvl.roman} · {lvl.curriculumTag}</span>
+                  <span className="text-amber-600">★ {st}/30</span>
+                </div>
+                <div className="font-bold text-slate-900 dark:text-white text-sm">{lvl.title}</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-sky-600 rounded-full"
+                      style={{ width: `${Math.round((done / list.length) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-mono-tabular text-slate-500">{done}/10</span>
                 </div>
               </div>
             );

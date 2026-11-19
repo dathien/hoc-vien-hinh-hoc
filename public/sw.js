@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hinh-hoc-smart-v1';
+const CACHE_NAME = 'hinh-hoc-smart-v2';
 const CORE_ASSETS = [
   '/',
   '/index.html',

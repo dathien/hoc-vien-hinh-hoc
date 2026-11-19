@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { ALL_CHALLENGES, getChallengeById } from '../challenges';
 import { BADGE_DEFINITIONS, computeRank, TOTAL_POSSIBLE_STARS } from '../data/ranksAndBadges';
 import type { GeoScene } from '../geometry/types';
+import { CHALLENGES_3D, getChallenge3DById } from '../geometry3d/challenges3d';
+import type { Challenge3DProgressRecord, Geo3DScene, SavedDrawing3D } from '../geometry3d/types3d';
 import { audioService } from '../services/audioService';
 import {
   type AppSettings,
@@ -19,6 +21,9 @@ import {
   type StudyHistoryItem,
 } from '../services/storageService';
 import type { ChallengeDefinition } from '../validators/types';
+
+export type LabSubView = 'hub' | '2d' | '3d' | 'templates' | 'saved';
+export type CampaignDimension = '2d' | '3d';
 
 export type PageId =
   | 'home'
@@ -46,11 +51,27 @@ export interface AppContextValue {
   setTeacherPreviewMode: (v: boolean) => void;
   openChallenge: (challengeId: string, opts?: { teacherPreview?: boolean }) => void;
 
-  // Lab transfer
+  // Lab transfer (2D & 3D)
+  labSubView: LabSubView;
+  setLabSubView: (v: LabSubView) => void;
   labInitialScene: GeoScene | null;
   labInitialTitle: string | null;
   openLabWithScene: (scene?: GeoScene, title?: string) => void;
   clearLabInitialScene: () => void;
+
+  lab3DInitialScene: Geo3DScene | null;
+  lab3DInitialTitle: string | null;
+  openLab3DWithScene: (scene?: Geo3DScene, title?: string) => void;
+  clearLab3DInitialScene: () => void;
+
+  // 3D Campaign navigation (separate from 2D 540-star system)
+  campaignDimension: CampaignDimension;
+  setCampaignDimension: (d: CampaignDimension) => void;
+  active3DLevelId: number;
+  setActive3DLevelId: (levelId: number) => void;
+  activeChallenge3DId: string | null;
+  setActiveChallenge3DId: (id: string | null) => void;
+  openChallenge3D: (challengeId: string) => void;
 
   // Settings & Tour
   settings: AppSettings;
@@ -58,7 +79,7 @@ export interface AppContextValue {
   tourOpen: boolean;
   setTourOpen: (open: boolean) => void;
 
-  // Persisted data
+  // Persisted data (2D)
   progressMap: Record<string, ChallengeProgressRecord>;
   recordChallengeAttempt: (params: {
     challengeId: string;
@@ -72,6 +93,20 @@ export interface AppContextValue {
   drawings: SavedDrawing[];
   saveDrawing: (d: SavedDrawing) => Promise<void>;
   deleteDrawing: (id: string) => Promise<void>;
+
+  // Persisted data (3D - strictly separate)
+  progress3DMap: Record<string, Challenge3DProgressRecord>;
+  recordChallenge3DAttempt: (params: {
+    challengeId: string;
+    stars: 0 | 1 | 2 | 3;
+    usedSteps: number;
+    elapsedSec: number;
+    viewedSolution: boolean;
+  }) => Promise<void>;
+
+  drawings3D: SavedDrawing3D[];
+  saveDrawing3D: (d: SavedDrawing3D) => Promise<void>;
+  deleteDrawing3D: (id: string) => Promise<void>;
 
   customChallenges: ChallengeDefinition[];
   saveCustomChallenge: (c: ChallengeDefinition) => Promise<void>;
@@ -93,7 +128,7 @@ export interface AppContextValue {
   applyBackupPayload: (payload: BackupPayload, mode: 'merge' | 'replace') => Promise<void>;
   resetAllProgress: () => Promise<void>;
 
-  // Computed stats
+  // Computed stats (2D — 180 challenges / 540 stars strictly preserved)
   stats: {
     totalChallenges: number;
     maxStars: number;
@@ -102,6 +137,17 @@ export interface AppContextValue {
     threeStarCount: number;
     rank: ReturnType<typeof computeRank>;
     unlockedBadgesCount: number;
+    nextRecommendedChallengeId: string;
+  };
+
+  // Computed stats (3D — 60 spatial challenges / 180 stars, strictly separate)
+  stats3D: {
+    totalChallenges: number;
+    maxStars: number;
+    completedCount: number;
+    totalStars: number;
+    threeStarCount: number;
+    drawingsCount: number;
     nextRecommendedChallengeId: string;
   };
 }
@@ -128,8 +174,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeChallengeId, setActiveChallengeId] = useState<string | null>(null);
   const [teacherPreviewMode, setTeacherPreviewMode] = useState(false);
 
+  const [labSubView, setLabSubView] = useState<LabSubView>('hub');
   const [labInitialScene, setLabInitialScene] = useState<GeoScene | null>(null);
   const [labInitialTitle, setLabInitialTitle] = useState<string | null>(null);
+  const [lab3DInitialScene, setLab3DInitialScene] = useState<Geo3DScene | null>(null);
+  const [lab3DInitialTitle, setLab3DInitialTitle] = useState<string | null>(null);
+
+  const [campaignDimension, setCampaignDimension] = useState<CampaignDimension>('2d');
+  const [active3DLevelId, setActive3DLevelId] = useState<number>(1);
+  const [activeChallenge3DId, setActiveChallenge3DId] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     const loaded = loadSettings();
@@ -143,28 +196,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [progressMap, setProgressMap] = useState<Record<string, ChallengeProgressRecord>>({});
   const [drawings, setDrawings] = useState<SavedDrawing[]>([]);
+  const [progress3DMap, setProgress3DMap] = useState<Record<string, Challenge3DProgressRecord>>({});
+  const [drawings3D, setDrawings3D] = useState<SavedDrawing3D[]>([]);
   const [customChallenges, setCustomChallenges] = useState<ChallengeDefinition[]>([]);
   const [arenaRooms, setArenaRooms] = useState<ArenaRoomRecord[]>([]);
   const [classes, setClasses] = useState<ClassroomRecord[]>([]);
   const [studyHistory, setStudyHistory] = useState<StudyHistoryItem[]>([]);
 
   const hydrateFromDB = useCallback(async () => {
-    const [progList, drawingList, teacherList, roomList, classList, histList] = await Promise.all([
-      storageService.getAllProgress(),
-      storageService.getAllDrawings(),
-      storageService.getAllTeacherChallenges(),
-      storageService.getArenaRooms(),
-      storageService.getClasses(),
-      storageService.getStudyHistory(),
-    ]);
+    const [progList, drawingList, prog3DList, drawing3DList, teacherList, roomList, classList, histList] =
+      await Promise.all([
+        storageService.getAllProgress(),
+        storageService.getAllDrawings(),
+        storageService.getAllProgress3D(),
+        storageService.getAllDrawings3D(),
+        storageService.getAllTeacherChallenges(),
+        storageService.getArenaRooms(),
+        storageService.getClasses(),
+        storageService.getStudyHistory(),
+      ]);
 
     const pMap: Record<string, ChallengeProgressRecord> = {};
     for (const rec of progList) {
       pMap[rec.challengeId] = rec;
     }
 
+    const p3Map: Record<string, Challenge3DProgressRecord> = {};
+    for (const rec of prog3DList) {
+      p3Map[rec.challengeId] = rec;
+    }
+
     setProgressMap(pMap);
     setDrawings(drawingList.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    setProgress3DMap(p3Map);
+    setDrawings3D(drawing3DList.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
     setCustomChallenges(teacherList);
     setArenaRooms(roomList.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     setClasses(classList.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
@@ -296,6 +361,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDrawings((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
+  const recordChallenge3DAttempt = useCallback(
+    async (params: {
+      challengeId: string;
+      stars: 0 | 1 | 2 | 3;
+      usedSteps: number;
+      elapsedSec: number;
+      viewedSolution: boolean;
+    }) => {
+      if (teacherPreviewMode) return;
+      const effectiveStars: 0 | 1 | 2 | 3 = params.viewedSolution ? 0 : params.stars;
+
+      setProgress3DMap((prev) => {
+        const existing = prev[params.challengeId];
+        const nextStars = Math.max(existing?.stars ?? 0, effectiveStars) as 0 | 1 | 2 | 3;
+        const nextBestSteps =
+          effectiveStars >= 1
+            ? existing?.bestSteps != null
+              ? Math.min(existing.bestSteps, params.usedSteps)
+              : params.usedSteps
+            : (existing?.bestSteps ?? null);
+        const nextBestTime =
+          effectiveStars >= 1
+            ? existing?.bestTimeSec != null
+              ? Math.min(existing.bestTimeSec, params.elapsedSec)
+              : params.elapsedSec
+            : (existing?.bestTimeSec ?? null);
+
+        const updated: Challenge3DProgressRecord = {
+          challengeId: params.challengeId,
+          stars: nextStars,
+          completed: nextStars >= 1 || Boolean(existing?.completed),
+          bestSteps: nextBestSteps,
+          attempts: (existing?.attempts ?? 0) + 1,
+          bestTimeSec: nextBestTime,
+          completedAt: effectiveStars >= 1 ? new Date().toISOString() : (existing?.completedAt ?? ''),
+          viewedSolution: existing ? existing.viewedSolution && params.viewedSolution : params.viewedSolution,
+        };
+
+        void storageService.saveProgress3D(updated);
+        return { ...prev, [params.challengeId]: updated };
+      });
+
+      const ch = getChallenge3DById(params.challengeId);
+      if (ch && effectiveStars >= 1) {
+        await logStudyEvent({
+          type: 'challenge',
+          refId: ch.id,
+          title: `[3D] ${ch.title}`,
+          detail: `Đạt ${effectiveStars}/3 sao không gian (${params.usedSteps} bước)`,
+        });
+      }
+    },
+    [teacherPreviewMode, logStudyEvent]
+  );
+
+  const saveDrawing3D = useCallback(async (d: SavedDrawing3D) => {
+    await storageService.saveDrawing3D(d);
+    setDrawings3D((prev) => {
+      const filtered = prev.filter((item) => item.id !== d.id);
+      return [d, ...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    });
+  }, []);
+
+  const deleteDrawing3D = useCallback(async (id: string) => {
+    await storageService.deleteDrawing3D(id);
+    setDrawings3D((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   const saveCustomChallenge = useCallback(async (c: ChallengeDefinition) => {
     await storageService.saveTeacherChallenge(c);
     setCustomChallenges((prev) => {
@@ -345,21 +478,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (opts?.teacherPreview !== undefined) {
         setTeacherPreviewMode(opts.teacherPreview);
       }
+      setCampaignDimension('2d');
       setActiveChallengeId(challengeId);
       setPage('campaign');
     },
     [customChallenges]
   );
 
+  const openChallenge3D = useCallback((challengeId: string) => {
+    const ch = getChallenge3DById(challengeId);
+    if (ch) {
+      setActive3DLevelId(ch.levelId);
+    }
+    setCampaignDimension('3d');
+    setActiveChallenge3DId(challengeId);
+    setPage('campaign');
+  }, []);
+
   const openLabWithScene = useCallback((scene?: GeoScene, title?: string) => {
     setLabInitialScene(scene ?? null);
     setLabInitialTitle(title ?? null);
+    setLabSubView('2d');
     setPage('lab');
   }, []);
 
   const clearLabInitialScene = useCallback(() => {
     setLabInitialScene(null);
     setLabInitialTitle(null);
+  }, []);
+
+  const openLab3DWithScene = useCallback((scene?: Geo3DScene, title?: string) => {
+    setLab3DInitialScene(scene ?? null);
+    setLab3DInitialTitle(title ?? null);
+    setLabSubView('3d');
+    setPage('lab');
+  }, []);
+
+  const clearLab3DInitialScene = useCallback(() => {
+    setLab3DInitialScene(null);
+    setLab3DInitialTitle(null);
   }, []);
 
   const createBackupPayload = useCallback(async () => {
@@ -379,8 +536,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const resetAllProgress = useCallback(async () => {
-    await storageService.clearProgress();
+    await Promise.all([storageService.clearProgress(), storageService.clearProgress3D()]);
     setProgressMap({});
+    setProgress3DMap({});
     updateSettings({ streakDays: 1, lastActiveDate: new Date().toISOString().slice(0, 10) });
   }, [updateSettings]);
 
@@ -426,6 +584,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [progressMap, settings.streakDays, drawings.length, arenaRooms]);
 
+  const stats3D = useMemo(() => {
+    let completedCount = 0;
+    let totalStars = 0;
+    let threeStarCount = 0;
+    for (const ch of CHALLENGES_3D) {
+      const rec = progress3DMap[ch.id];
+      if (!rec) continue;
+      const clamped = Math.min(3, Math.max(0, rec.stars));
+      if (clamped >= 1) completedCount += 1;
+      if (clamped === 3) threeStarCount += 1;
+      totalStars += clamped;
+    }
+    const firstUnfinished = CHALLENGES_3D.find((c) => (progress3DMap[c.id]?.stars ?? 0) < 1);
+    return {
+      totalChallenges: CHALLENGES_3D.length,
+      maxStars: CHALLENGES_3D.length * 3,
+      completedCount,
+      totalStars,
+      threeStarCount,
+      drawingsCount: drawings3D.length,
+      nextRecommendedChallengeId: firstUnfinished?.id ?? CHALLENGES_3D[0].id,
+    };
+  }, [progress3DMap, drawings3D.length]);
+
   const value: AppContextValue = {
     page,
     setPage,
@@ -437,10 +619,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     teacherPreviewMode,
     setTeacherPreviewMode,
     openChallenge,
+    labSubView,
+    setLabSubView,
     labInitialScene,
     labInitialTitle,
     openLabWithScene,
     clearLabInitialScene,
+    lab3DInitialScene,
+    lab3DInitialTitle,
+    openLab3DWithScene,
+    clearLab3DInitialScene,
+    campaignDimension,
+    setCampaignDimension,
+    active3DLevelId,
+    setActive3DLevelId,
+    activeChallenge3DId,
+    setActiveChallenge3DId,
+    openChallenge3D,
     settings,
     updateSettings,
     tourOpen,
@@ -450,6 +645,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     drawings,
     saveDrawing,
     deleteDrawing,
+    progress3DMap,
+    recordChallenge3DAttempt,
+    drawings3D,
+    saveDrawing3D,
+    deleteDrawing3D,
     customChallenges,
     saveCustomChallenge,
     deleteCustomChallenge,
@@ -465,6 +665,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     applyBackupPayload,
     resetAllProgress,
     stats,
+    stats3D,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

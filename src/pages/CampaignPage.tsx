@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -44,6 +44,8 @@ import {
   validateChallengeConstruction,
 } from '../validators/validator';
 
+const Campaign3DView = lazy(() => import('./Campaign3DView'));
+
 const HINT_TIER_LABELS = [
   'Mức 1 – Định hướng suy nghĩ',
   'Mức 2 – Gợi ý phương pháp dựng',
@@ -71,11 +73,16 @@ export const CampaignPage: React.FC = () => {
     setActiveLevelId,
     activeChallengeId,
     setActiveChallengeId,
+    campaignDimension,
+    setCampaignDimension,
+    setActiveChallenge3DId,
     teacherPreviewMode,
     setTeacherPreviewMode,
     progressMap,
     customChallenges,
     recordChallengeAttempt,
+    stats,
+    stats3D,
     settings,
     updateSettings,
   } = useApp();
@@ -239,17 +246,74 @@ export const CampaignPage: React.FC = () => {
     }
   };
 
-  // VIEW 1: 18-Level Map & Challenge Picker
+  // VIEW 0: 3D Spatial Challenges (Lazy-loaded, strictly separate from 2D 540-star system)
+  if (campaignDimension === '3d') {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <button
+            type="button"
+            onClick={() => {
+              setCampaignDimension('2d');
+              setActiveChallenge3DId(null);
+            }}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:border-teal-400"
+          >
+            Thử thách hình học phẳng 2D ({stats.completedCount}/180 · ★ {stats.totalStars}/540)
+          </button>
+          <button
+            type="button"
+            onClick={() => setCampaignDimension('3d')}
+            className="px-4 py-2.5 rounded-xl bg-teal-700 text-white text-[15px] font-semibold shadow-xs"
+          >
+            Thử thách hình học không gian 3D ({stats3D.completedCount}/60 · ★ {stats3D.totalStars}/180)
+          </button>
+        </div>
+
+        <Suspense
+          fallback={
+            <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-[15px] text-slate-600">
+              Đang tải hệ thống 60 thử thách Hình học không gian 3D...
+            </div>
+          }
+        >
+          <Campaign3DView />
+        </Suspense>
+      </div>
+    );
+  }
+
+  // VIEW 1: 18-Level Map & Challenge Picker (2D)
   if (!activeChallenge) {
     const levelMeta = getLevelMeta(activeLevelId) ?? LEVELS[0];
     const levelChallenges = getChallengesByLevel(activeLevelId);
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <button
+            type="button"
+            onClick={() => setCampaignDimension('2d')}
+            className="px-4 py-2.5 rounded-xl bg-teal-700 text-white text-[15px] font-semibold shadow-xs"
+          >
+            Thử thách hình học phẳng 2D ({stats.completedCount}/180 · ★ {stats.totalStars}/540)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveChallengeId(null);
+              setCampaignDimension('3d');
+            }}
+            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:border-sky-400"
+          >
+            Thử thách hình học không gian 3D ({stats3D.completedCount}/60 · ★ {stats3D.totalStars}/180)
+          </button>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-              Hệ thống 18 Cấp độ – 180 Thử thách
+              Hệ thống 18 Cấp độ – 180 Thử thách Hình học Phẳng
             </h1>
             <p className="text-[15px] text-slate-600 dark:text-slate-400 mt-1">
               Hoàn thành bài trước (tối thiểu 1 sao) để mở khóa bài tiếp theo. Mỗi thử thách có tối đa 3 sao: Sao 1 (dựng hình chính xác), Sao 2 (tối ưu số bước dựng L), Sao 3 (tối ưu số phép dựng cơ bản E).

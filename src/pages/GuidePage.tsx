@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Award,
   BookOpen,
+  Box,
   ChevronRight,
   Compass,
   Download,
@@ -16,7 +17,106 @@ import {
   ShieldCheck,
   Target,
 } from 'lucide-react';
+import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
+import { getTemplate3DById } from '../geometry3d/templates3d';
 import { useApp } from '../store/AppContext';
+
+interface Guide3DGroup {
+  id: string;
+  number: number;
+  title: string;
+  summary: string;
+  steps: string[];
+  tip: string;
+  templateId: string;
+}
+
+const GUIDE_3D_GROUPS: Guide3DGroup[] = [
+  {
+    id: 'guide3d-1',
+    number: 1,
+    title: 'Làm quen không gian 3D và góc nhìn',
+    summary:
+      'Xoay quan sát mô hình 360°, phóng to thu nhỏ và chuyển đổi nhanh giữa 4 chế độ hiển thị trực quan.',
+    steps: [
+      'Kéo chuột trái trên vùng 3D để xoay góc nhìn tự do, cuộn con lăn để thu phóng và kéo chuột phải để dịch chuyển khung nhìn.',
+      'Chọn nhanh 6 góc nhìn chuẩn ở thanh dưới: Trước, Sau, Trái, Phải, Trên và Phối cảnh; nhấn Căn giữa để đưa hình về trung tâm.',
+      'Chuyển giữa 4 chế độ: Hình học SGK (nét liền/nét khuất chuẩn sách giáo khoa), Hình khối 3D, Khung dây và Hệ tọa độ Oxyz.',
+    ],
+    tip: 'Bật nút "Tự xoay" để quan sát khối đa diện từ mọi hướng; hệ thống sẽ tự tạm dừng khi bạn chọn công cụ dựng hình.',
+    templateId: 'T3D_01',
+  },
+  {
+    id: 'guide3d-2',
+    number: 2,
+    title: 'Tạo hình khối và chỉnh kích thước',
+    summary:
+      'Chọn từ 18 hình khối chuẩn Toán 11–12 và thay đổi cạnh, chiều cao, bán kính theo thời gian thực.',
+    steps: [
+      'Mở nhóm "Hình khối 3D" ở thanh công cụ bên trái và nhấn "Thư viện hình khối (18 khối)".',
+      'Chọn khối cần tạo (hình chóp, lăng trụ, lập phương, hình cầu, hình trụ, hình nón...) và nhập kích thước ban đầu.',
+      'Nhấp chọn hình khối để mở bảng Thuộc tính bên phải: kéo thanh trượt thay đổi a, b, h, r và bật/tắt mặt, cạnh, đỉnh, đường cao hoặc đường chéo.',
+    ],
+    tip: 'Thể tích V và diện tích toàn phần được hệ thống tính toán tự động, chính xác theo đúng đỉnh thực của hình khối.',
+    templateId: 'T3D_05',
+  },
+  {
+    id: 'guide3d-3',
+    number: 3,
+    title: 'Dựng điểm, đường thẳng, mặt phẳng 3D',
+    summary:
+      'Chọn mặt phẳng làm việc rõ ràng trước khi đặt điểm tự do và sử dụng các công cụ quan hệ song song – vuông góc.',
+    steps: [
+      'Chọn Mặt phẳng làm việc (Oxy, Oxz hoặc Oyz) và kéo thanh Cao độ/dịch ở góc trên bên trái trước khi dùng công cụ "Điểm tự do 3D".',
+      'Dùng các công cụ Đoạn thẳng, Đường thẳng, Trung điểm, Mặt phẳng qua 3 điểm bằng cách nhấp lần lượt các đối tượng theo dòng nhắc trực tiếp.',
+      'Sử dụng nhóm "Quan hệ hình học" để dựng đường thẳng song song, đường thẳng vuông góc với mặt phẳng, giao tuyến hoặc chân đường vuông góc.',
+    ],
+    tip: 'Khi kéo điểm tự do trong chế độ Chọn, mọi trung điểm, mặt phẳng, đường thẳng và thiết diện phụ thuộc sẽ tự động cập nhật theo.',
+    templateId: 'T3D_16',
+  },
+  {
+    id: 'guide3d-4',
+    number: 4,
+    title: 'Dựng thiết diện và kéo mặt phẳng cắt',
+    summary:
+      'Tạo thiết diện động giữa mặt phẳng và hình khối, quan sát hình chiếu phẳng 2D của thiết diện cùng chu vi và diện tích.',
+    steps: [
+      'Tạo một hình khối (ví dụ hình lập phương hoặc hình chóp) và một mặt phẳng cắt (qua 3 điểm hoặc theo phương trình).',
+      'Chọn công cụ "Thiết diện khối – mặt phẳng", sau đó nhấp vào hình khối rồi nhấp vào mặt phẳng cắt.',
+      'Chọn mặt phẳng cắt và kéo thanh trượt tịnh tiến (hoặc kéo một điểm xác định mặt phẳng) để xem hình dạng thiết diện biến đổi liên tục.',
+    ],
+    tip: 'Nhấp chọn đối tượng Thiết diện để xem hình 2D phẳng của thiết diện và nút "Ẩn hình khối để xem riêng thiết diện".',
+    templateId: 'T3D_21',
+  },
+  {
+    id: 'guide3d-5',
+    number: 5,
+    title: 'Hệ tọa độ Oxyz và nhập phương trình',
+    summary:
+      'Hỗ trợ đầy đủ Hình học tọa độ không gian Toán 12: nhập điểm (x;y;z), vectơ, phương trình mặt phẳng và mặt cầu.',
+    steps: [
+      'Chuyển sang chế độ hiển thị "Hệ tọa độ" để hiện rõ ba trục Ox (đỏ), Oy (xanh lá), Oz (xanh dương) cùng các mặt phẳng tọa độ.',
+      'Mở nhóm "Hệ tọa độ Oxyz" để nhập Điểm theo tọa độ (x; y; z), Vectơ, Đường thẳng qua điểm & VTCP, Mặt phẳng Ax+By+Cz+D=0 hoặc Mặt cầu.',
+      'Dùng thẻ "Quan hệ" ở bảng bên phải để phân tích ngay vị trí tương đối (song song, cắt nhau, chéo nhau, vuông góc), góc và khoảng cách.',
+    ],
+    tip: 'Trong chế độ Hệ tọa độ, tọa độ của từng điểm được hiển thị rõ ngay cạnh tên điểm trên không gian 3D.',
+    templateId: 'T3D_35',
+  },
+  {
+    id: 'guide3d-6',
+    number: 6,
+    title: 'Đo đạc, trình chiếu và xuất hình',
+    summary:
+      'Đo góc nhị diện, khoảng cách giữa hai đường thẳng chéo nhau, bật Chế độ trình chiếu lớp học và xuất SVG vector / PNG.',
+    steps: [
+      'Dùng nhóm "Đo đạc không gian" để đo độ dài, góc giữa đường thẳng và mặt phẳng, góc nhị diện [0°–180°] và khoảng cách trong không gian.',
+      'Nhấn nút "Trình chiếu" trên thanh trên cùng để mở rộng tối đa khung 3D, phóng to nhãn chữ và nhấn mạnh từng bước dựng khi dạy trên lớp.',
+      'Mở nút "Xuất" để tải ảnh PNG nền trắng, PNG nền trong suốt, tệp SVG vector chuẩn (không nhúng ảnh bitmap) hoặc tệp JSON để chia sẻ.',
+    ],
+    tip: 'Bạn có thể kéo trực tiếp từng nhãn điểm trên màn hình 3D để sắp xếp đẹp mắt trước khi xuất hình SVG hoặc PNG chèn vào đề thi.',
+    templateId: 'T3D_29',
+  },
+];
 
 type GuideIllustrationId =
   | 'interface'
@@ -485,7 +585,8 @@ const GROUP_ICONS: React.FC<{ num: number }> = ({ num }) => {
 };
 
 export const GuidePage: React.FC = () => {
-  const { setPage, openChallenge, setTourOpen } = useApp();
+  const { setPage, openChallenge, openLab3DWithScene, setTourOpen } = useApp();
+  const [guideDimension, setGuideDimension] = useState<'2d' | '3d'>('2d');
   const [selectedId, setSelectedId] = useState<string>('all');
 
   const visibleGroups =
@@ -542,6 +643,100 @@ export const GuidePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Dimension Switcher: 2D (12 parts) vs 3D (6 parts) */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
+        <button
+          type="button"
+          onClick={() => setGuideDimension('2d')}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-semibold transition-colors ${
+            guideDimension === '2d'
+              ? 'bg-teal-700 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
+          }`}
+        >
+          <Compass className="w-4 h-4" />
+          Hướng dẫn Hình học Phẳng 2D (12 phần)
+        </button>
+        <button
+          type="button"
+          onClick={() => setGuideDimension('3d')}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-semibold transition-colors ${
+            guideDimension === '3d'
+              ? 'bg-sky-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-sky-400'
+          }`}
+        >
+          <Box className="w-4 h-4" />
+          Hướng dẫn Hình học Không gian 3D (6 nhóm thao tác)
+        </button>
+      </div>
+
+      {guideDimension === '3d' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {GUIDE_3D_GROUPS.map((g) => {
+            const tpl = getTemplate3DById(g.templateId);
+            const previewScene = tpl?.buildScene();
+            return (
+              <article
+                key={g.id}
+                className="rounded-2xl border border-sky-200/80 dark:border-sky-800/70 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs"
+              >
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
+                      Thao tác 3D · Nhóm {g.number} / 6
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white mt-0.5">
+                      {g.title}
+                    </h3>
+                  </div>
+                  <p className="text-[15px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {g.summary}
+                  </p>
+                  {previewScene && (
+                    <div className="h-40 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950 overflow-hidden">
+                      <LiveGeo3DPreview
+                        scene={previewScene}
+                        width={320}
+                        height={170}
+                        animate={false}
+                        reducedMotion={true}
+                      />
+                    </div>
+                  )}
+                  <ol className="space-y-2 text-[15px] text-slate-700 dark:text-slate-200">
+                    {g.steps.map((st, idx) => (
+                      <li key={idx} className="flex items-start gap-2.5 leading-relaxed">
+                        <span className="w-6 h-6 rounded-full bg-sky-50 dark:bg-sky-950 text-sky-800 dark:text-sky-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 font-mono-tabular">
+                          {idx + 1}
+                        </span>
+                        <span>{st}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="rounded-xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/80 px-3.5 py-2.5 text-[15px] text-amber-950 dark:text-amber-200 leading-relaxed">
+                    <strong className="font-semibold">Mẹo thực hành: </strong>
+                    {g.tip}
+                  </div>
+                </div>
+                {tpl && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => openLab3DWithScene(tpl.buildScene(), tpl.title)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-600 text-white text-[15px] font-semibold hover:bg-sky-700"
+                    >
+                      Mở bản dựng mẫu để thực hành
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+      <>
       {/* Quick index of 12 groups */}
       <nav
         aria-label="Mục lục 12 phần hướng dẫn"
@@ -653,6 +848,8 @@ export const GuidePage: React.FC = () => {
           </article>
         ))}
       </div>
+      </>
+      )}
     </div>
   );
 };

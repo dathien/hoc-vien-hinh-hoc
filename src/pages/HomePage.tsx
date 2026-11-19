@@ -21,6 +21,7 @@ import {
   LEVELS,
 } from '../challenges';
 import { GeoThumbnailSVG } from '../components/geometry/GeoThumbnailSVG';
+import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
 import { MathText } from '../components/math/MathText';
 import { useApp } from '../store/AppContext';
 
@@ -31,10 +32,13 @@ export const HomePage: React.FC = () => {
     setPage,
     setActiveLevelId,
     setActiveChallengeId,
+    setLabSubView,
+    setCampaignDimension,
     openChallenge,
     progressMap,
     teacherPreviewMode,
     stats,
+    stats3D,
     settings,
   } = useApp();
 
@@ -48,9 +52,9 @@ export const HomePage: React.FC = () => {
       {/* Hero Section */}
       <section className="relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <div className="bg-geo-grid px-6 sm:px-10 py-10 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-6 space-y-6">
             <div className="text-sm font-semibold text-teal-700 dark:text-teal-400 tracking-wide uppercase leading-snug break-words">
-              Không gian hình học động · Thử thách dựng hình bằng thước và compa
+              Không gian hình học tương tác 2D &amp; 3D
             </div>
 
             <div className="space-y-3">
@@ -59,9 +63,8 @@ export const HomePage: React.FC = () => {
               </h1>
               <p className="text-lg text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
                 <strong>Khám phá – Dựng hình – Chinh phục.</strong> Phát triển tư duy hình học, kỹ
-                năng dựng hình và năng lực lập luận toán học thông qua <strong>180 thử thách</strong>{' '}
-                tương tác, thực hành dựng hình tự do, kiểm chứng hình học động, thư viện kiến thức
-                và đấu trường Toán học.
+                năng dựng hình và năng lực lập luận toán học thông qua 180 thử thách hình học phẳng,
+                không gian dựng hình 2D – 3D, thư viện kiến thức và các hoạt động học tập tương tác.
               </p>
             </div>
 
@@ -76,11 +79,14 @@ export const HomePage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setPage('lab')}
+                onClick={() => {
+                  setLabSubView('hub');
+                  setPage('lab');
+                }}
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-sky-600 text-white font-semibold text-base hover:bg-sky-700 shadow-sm transition-colors"
               >
                 <Ruler className="w-4 h-4" />
-                Thực hành tự do
+                Thực hành 2D &amp; 3D
               </button>
               <button
                 type="button"
@@ -107,49 +113,76 @@ export const HomePage: React.FC = () => {
               <span>·</span>
               <span>Hỗ trợ sử dụng ngoại tuyến</span>
               <span>·</span>
-              <span>Kiến thức phổ thông và mở rộng</span>
+              <span>2D &amp; 3D tương tác</span>
             </div>
           </div>
 
-          {/* Interactive-style Euclidean vector centerpiece */}
-          <div className="lg:col-span-5 flex items-center justify-center">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 p-4 shadow-md">
-              <svg viewBox="0 0 360 250" className="w-full h-auto" role="img" aria-label="Sơ đồ dựng hình tam giác đều minh họa">
+          {/* Dual 2D + Live Animated 3D Geometric Visual */}
+          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-stretch">
+            {/* 2D Figure Card */}
+            <div className="rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 p-3.5 shadow-sm flex flex-col justify-between">
+              <svg viewBox="0 0 360 250" className="w-full h-44" role="img" aria-label="Sơ đồ dựng hình tam giác đều 2D minh họa">
                 <defs>
                   <linearGradient id="heroTri" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#0F766E" stopOpacity="0.18" />
                     <stop offset="100%" stopColor="#0284C7" stopOpacity="0.10" />
                   </linearGradient>
                 </defs>
-                {/* Auxiliary construction circles */}
                 <circle cx="130" cy="175" r="100" fill="none" stroke="#0284C7" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.65" />
                 <circle cx="230" cy="175" r="100" fill="none" stroke="#0284C7" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.65" />
-                {/* Circumcircle of equilateral triangle */}
                 <circle cx="180" cy="146.1" r="57.7" fill="none" stroke="#7C3AED" strokeWidth="1.5" opacity="0.6" />
-                {/* Perpendicular bisector */}
                 <line x1="180" y1="26" x2="180" y2="232" stroke="#D97706" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.8" />
-                {/* Main Equilateral Triangle */}
                 <polygon points="130,175 230,175 180,88.4" fill="url(#heroTri)" stroke="#0F766E" strokeWidth="2.6" />
-                {/* Right angle mark */}
                 <rect x="180" y="164" width="11" height="11" fill="none" stroke="#D97706" strokeWidth="1.6" />
-                {/* Vertices */}
                 <circle cx="130" cy="175" r="5.5" fill="#0F766E" stroke="#FFFFFF" strokeWidth="2" />
                 <circle cx="230" cy="175" r="5.5" fill="#0F766E" stroke="#FFFFFF" strokeWidth="2" />
                 <circle cx="180" cy="88.4" r="6" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="2" />
                 <circle cx="180" cy="146.1" r="4.5" fill="#7C3AED" stroke="#FFFFFF" strokeWidth="1.8" />
                 <circle cx="180" cy="175" r="4.2" fill="#0284C7" stroke="#FFFFFF" strokeWidth="1.8" />
-                {/* Labels */}
                 <text x="112" y="192" fontSize="14" fontWeight="700" fill="currentColor" className="text-slate-800 dark:text-slate-100">A</text>
                 <text x="239" y="192" fontSize="14" fontWeight="700" fill="currentColor" className="text-slate-800 dark:text-slate-100">B</text>
                 <text x="188" y="82" fontSize="14" fontWeight="700" fill="#D97706">C</text>
                 <text x="188" y="144" fontSize="12" fontWeight="700" fill="#7C3AED">O</text>
                 <text x="186" y="192" fontSize="12" fontWeight="700" fill="#0284C7">M</text>
               </svg>
-              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Dựng tam giác đều bằng thước và compa</span>
-                <span className="font-mono-tabular font-semibold text-teal-700 dark:text-teal-400">
-                  Mục tiêu: 4L · 4E
-                </span>
+              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-teal-700 dark:text-teal-400">Hình học phẳng 2D</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLabSubView('2d');
+                    setPage('lab');
+                  }}
+                  className="font-semibold hover:text-teal-700 hover:underline"
+                >
+                  Mở 2D →
+                </button>
+              </div>
+            </div>
+
+            {/* Live Code-Driven 3D Figure Card (Zero Three.js on Homepage) */}
+            <div className="rounded-2xl border border-sky-200/90 dark:border-sky-800/70 bg-white/95 dark:bg-slate-950/90 p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="h-44">
+                <LiveGeo3DPreview
+                  variant="hero_pyramid"
+                  width={320}
+                  height={210}
+                  animate={true}
+                  reducedMotion={settings.reducedMotion}
+                />
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-sky-700 dark:text-sky-400">Không gian 3D &amp; Oxyz</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLabSubView('3d');
+                    setPage('lab');
+                  }}
+                  className="font-semibold hover:text-sky-700 hover:underline"
+                >
+                  Mở 3D →
+                </button>
               </div>
             </div>
           </div>
@@ -273,6 +306,54 @@ export const HomePage: React.FC = () => {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               8 danh hiệu, 12 huy hiệu &amp; giấy chứng nhận khổ A4.
             </p>
+          </button>
+        </div>
+      </section>
+
+      {/* 3D Spatial Geometry Quick Access Strip */}
+      <section className="rounded-2xl border border-sky-200/90 dark:border-sky-800/70 bg-gradient-to-r from-sky-50/80 via-white to-teal-50/70 dark:from-slate-900 dark:to-slate-900 p-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1 max-w-2xl">
+          <div className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400">
+            Không gian Hình học 3D &amp; Hệ tọa độ Oxyz · Toán 11 &amp; Toán 12
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            Dựng hình không gian 3D, 40 hình mẫu &amp; 60 thử thách không gian
+          </h2>
+          <p className="text-[15px] text-slate-600 dark:text-slate-300">
+            Khám phá 18 hình khối chuẩn SGK, cắt thiết diện động, đo góc – khoảng cách và luyện tập riêng ({stats3D.completedCount}/{stats3D.totalChallenges} bài 3D · ★ {stats3D.totalStars}/{stats3D.maxStars}).
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              setLabSubView('3d');
+              setPage('lab');
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 text-white text-[15px] font-semibold hover:bg-sky-700"
+          >
+            Dựng hình 3D ngay
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setLabSubView('templates');
+              setPage('lab');
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-[15px] font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50"
+          >
+            40 hình mẫu 3D
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCampaignDimension('3d');
+              setPage('campaign');
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50/70 dark:bg-teal-950/40 text-[15px] font-semibold text-teal-800 dark:text-teal-200 hover:bg-teal-100"
+          >
+            60 thử thách 3D
           </button>
         </div>
       </section>

@@ -66,7 +66,79 @@ const CATEGORIES: Array<{ id: string; name: string; items: TemplateButton[] }> =
       { label: 'Vuông góc', previewLatex: '\\perp', insertLatex: ' \\perp ' },
       { label: 'Song song', previewLatex: '\\parallel', insertLatex: ' \\parallel ' },
       { label: 'Đồng dạng', previewLatex: '\\sim', insertLatex: ' \\sim ' },
+      { label: 'Góc vuông', previewLatex: '90^\\circ', insertLatex: '90^\\circ' },
       { label: 'Độ', previewLatex: '^\\circ', insertLatex: '^\\circ' },
+    ],
+  },
+  {
+    id: 'spatial3d',
+    name: 'Không gian 3D & Oxyz',
+    items: [
+      {
+        label: 'Tọa độ 3D',
+        previewLatex: '(x; y; z)',
+        insertLatex: '(x; y; z)',
+        needsParams: [
+          { key: 'x', label: 'Hoành độ x', placeholder: '1', defaultVal: '1' },
+          { key: 'y', label: 'Tung độ y', placeholder: '2', defaultVal: '2' },
+          { key: 'z', label: 'Cao độ z', placeholder: '3', defaultVal: '3' },
+        ],
+        buildLatex: (v) => `(${v.x || 'x'}; ${v.y || 'y'}; ${v.z || 'z'})`,
+      },
+      {
+        label: 'Mặt phẳng (P)',
+        previewLatex: '(P)',
+        insertLatex: '(P)',
+        needsParams: [{ key: 'p', label: 'Tên mặt phẳng', placeholder: 'P', defaultVal: 'P' }],
+        buildLatex: (v) => `(${v.p || 'P'})`,
+      },
+      {
+        label: 'Hình chóp',
+        previewLatex: 'S.ABCD',
+        insertLatex: 'S.ABCD',
+        needsParams: [
+          { key: 's', label: 'Đỉnh', placeholder: 'S', defaultVal: 'S' },
+          { key: 'b', label: 'Đáy', placeholder: 'ABCD', defaultVal: 'ABCD' },
+        ],
+        buildLatex: (v) => `${v.s || 'S'}.${v.b || 'ABCD'}`,
+      },
+      {
+        label: 'Khoảng cách',
+        previewLatex: 'd(A,(P))',
+        insertLatex: 'd(A, (P))',
+        needsParams: [
+          { key: 'a', label: 'Đối tượng 1', placeholder: 'A', defaultVal: 'A' },
+          { key: 'b', label: 'Đối tượng 2', placeholder: '(P)', defaultVal: '(P)' },
+        ],
+        buildLatex: (v) => `d(${v.a || 'A'}, ${v.b || '(P)'})`,
+      },
+      {
+        label: 'Tích có hướng',
+        previewLatex: '[\\vec{u}, \\vec{v}]',
+        insertLatex: '[\\vec{u}, \\vec{v}]',
+        needsParams: [
+          { key: 'u', label: 'Vectơ thứ nhất', placeholder: 'u', defaultVal: 'u' },
+          { key: 'v', label: 'Vectơ thứ hai', placeholder: 'v', defaultVal: 'v' },
+        ],
+        buildLatex: (v) => `[\\vec{${v.u || 'u'}}, \\vec{${v.v || 'v'}}]`,
+      },
+      {
+        label: 'Hệ phương trình',
+        previewLatex: '\\begin{cases}x\\\\y\\end{cases}',
+        insertLatex: '\\begin{cases} x = t \\\\ y = t \\\\ z = t \\end{cases}',
+        needsParams: [
+          { key: 'e1', label: 'Phương trình 1', placeholder: 'x = 1 + t', defaultVal: 'x = 1 + t' },
+          { key: 'e2', label: 'Phương trình 2', placeholder: 'y = 2 - t', defaultVal: 'y = 2 - t' },
+          { key: 'e3', label: 'Phương trình 3', placeholder: 'z = 3t', defaultVal: 'z = 3t' },
+        ],
+        buildLatex: (v) => `\\begin{cases} ${v.e1 || 'x = t'} \\\\ ${v.e2 || 'y = t'} \\\\ ${v.e3 || 'z = t'} \\end{cases}`,
+      },
+      { label: 'Thuộc', previewLatex: '\\in', insertLatex: ' \\in ' },
+      { label: 'Không thuộc', previewLatex: '\\notin', insertLatex: ' \\notin ' },
+      { label: 'Chứa trong', previewLatex: '\\subset', insertLatex: ' \\subset ' },
+      { label: 'Giao nhau', previewLatex: '\\cap', insertLatex: ' \\cap ' },
+      { label: 'Vectơ pháp tuyến', previewLatex: '\\vec{n}', insertLatex: '\\vec{n}' },
+      { label: 'Vectơ chỉ phương', previewLatex: '\\vec{u}', insertLatex: '\\vec{u}' },
     ],
   },
   {
@@ -147,6 +219,7 @@ const CATEGORIES: Array<{ id: string; name: string; items: TemplateButton[] }> =
       { label: 'Số Pi', previewLatex: '\\pi', insertLatex: '\\pi' },
       { label: 'Tỉ lệ vàng', previewLatex: '\\varphi', insertLatex: '\\varphi' },
       { label: 'Thuộc', previewLatex: '\\in', insertLatex: ' \\in ' },
+      { label: 'Không thuộc', previewLatex: '\\notin', insertLatex: ' \\notin ' },
       { label: 'Giao', previewLatex: '\\cap', insertLatex: ' \\cap ' },
       { label: 'Hợp', previewLatex: '\\cup', insertLatex: ' \\cup ' },
     ],
@@ -412,7 +485,7 @@ export const MathFormulaEditor: React.FC<MathFormulaEditorProps> = ({
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-700 text-white text-sm font-semibold hover:bg-teal-800 disabled:opacity-45"
           >
             <Check className="w-4 h-4" />
-            Chèn công thức
+            Áp dụng
           </button>
         </div>
       </div>
