@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isTeacher() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.role == 'student';
+      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+
+    match /profiles/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /progress/{docId} {
+      allow read, write: if isSignedIn() && (
+        (resource != null && resource.data.uid == request.auth.uid) ||
+        request.resource.data.uid == request.auth.uid
+      );
+    }
+
+    match /drawings/{drawingId} {
+      allow read, write: if isSignedIn() && (
+        (resource != null && resource.data.uid == request.auth.uid) ||
+        request.resource.data.uid == request.auth.uid
+      );
+    }
+
+    match /achievements/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /classes/{classId} {
+      allow read: if isSignedIn() && (
+        resource.data.teacherId == request.auth.uid ||
+        exists(/databases/$(database)/documents/classMembers/$(classId + '_' + request.auth.uid))
+      );
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+    }
+
+    match /classMembers/{memberId} {
+      allow read: if isSignedIn() && (
+        resource.data.uid == request.auth.uid ||
+        get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.teacherId == request.auth.uid
+      );
+      allow create, delete: if isTeacher() &&
+        get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.teacherId == request.auth.uid;
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isSignedIn();
+      allow write: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentUid == request.auth.uid ||
+        resource.data.teacherUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.studentUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /teacherChallenges/{challengeId} {
+      allow read: if isSignedIn() && (resource.data.teacherId == request.auth.uid || resource.data.published == true);
+      allow write: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+    }
+
+    match /rooms/{roomCode} {
+      allow read: if isSignedIn();
+      allow create: if isTeacher() && request.resource.data.hostUid == request.auth.uid;
+      allow update, delete: if isTeacher() && resource.data.hostUid == request.auth.uid;
+    }
+
+    match /roomParticipants/{participantId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.uid == request.auth.uid ||
+        get(/databases/$(database)/documents/rooms/$(resource.data.roomCode)).data.hostUid == request.auth.uid
+      );
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /competitionResults/{resultId} {
+      allow read: if isSignedIn();
+      allow write: if isTeacher() && request.resource.data.hostUid == request.auth.uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

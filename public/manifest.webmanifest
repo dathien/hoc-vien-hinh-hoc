@@ -1,0 +1,34 @@
+{
+  "id": "/",
+  "name": "Học Viện Hình Học Smart",
+  "short_name": "HìnhHọcSmart",
+  "description": "Khám phá – Dựng hình – Chinh phục. Không gian hình học động và 180 thử thách dựng hình bằng thước và compa.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0F766E",
+  "background_color": "#F5F9FC",
+  "lang": "vi",
+  "categories": ["education", "games", "productivity"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
