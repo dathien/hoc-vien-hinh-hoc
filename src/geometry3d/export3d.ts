@@ -1,4 +1,9 @@
 import { add3, cross3, dot3, midpoint3, norm3, normalize3, planeBasis, scale3, sub3 } from './math3d';
+import {
+  GeometryLabelManager,
+  type EdgeObstacle2D,
+  type LabelInput,
+} from './labelManager';
 import type { Geo3DScene, Geo3DSolid, Vec3 } from './types3d';
 
 export interface Projected2D {
@@ -7,16 +12,56 @@ export interface Projected2D {
   depth: number;
 }
 
+export interface CameraBasis {
+  forward: Vec3;
+  right: Vec3;
+  up: Vec3;
+}
+
 /**
  * Pure mathematical 3D -> 2D camera projection (orthographic or perspective)
  * used both for true Vector SVG export and lightweight live animated 3D previews.
  */
-export function buildCameraBasis(camPos: Vec3, target: Vec3) {
+export function buildCameraBasis(camPos: Vec3, target: Vec3): CameraBasis {
   const forward = normalize3(sub3(target, camPos)) ?? { x: -0.6, y: -0.5, z: -0.6 };
   const worldUp = Math.abs(forward.z) > 0.98 ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
   const right = normalize3(cross3(forward, worldUp)) ?? { x: 1, y: 0, z: 0 };
   const up = normalize3(cross3(right, forward)) ?? { x: 0, y: 0, z: 1 };
   return { forward, right, up };
+}
+
+export function projectWithBasis(
+  p: Vec3,
+  camPos: Vec3,
+  camDist: number,
+  basis: CameraBasis,
+  width: number,
+  height: number,
+  projection: 'orthographic' | 'perspective',
+  scalePx = 56
+): Projected2D {
+  const rx_w = p.x - camPos.x;
+  const ry_w = p.y - camPos.y;
+  const rz_w = p.z - camPos.z;
+  const depth = rx_w * basis.forward.x + ry_w * basis.forward.y + rz_w * basis.forward.z;
+  const rx = rx_w * basis.right.x + ry_w * basis.right.y + rz_w * basis.right.z;
+  const ry = rx_w * basis.up.x + ry_w * basis.up.y + rz_w * basis.up.z;
+
+  if (projection === 'perspective') {
+    const denom = Math.max(0.5, depth);
+    const factor = (scalePx * camDist) / denom;
+    return {
+      x: width * 0.5 + rx * factor,
+      y: height * 0.5 - ry * factor,
+      depth,
+    };
+  }
+
+  return {
+    x: width * 0.5 + rx * scalePx,
+    y: height * 0.5 - ry * scalePx,
+    depth,
+  };
 }
 
 export function projectPoint3D(
@@ -28,28 +73,9 @@ export function projectPoint3D(
   projection: 'orthographic' | 'perspective',
   scalePx = 56
 ): Projected2D {
-  const { forward, right, up } = buildCameraBasis(camPos, target);
-  const rel = sub3(p, camPos);
-  const depth = dot3(rel, forward);
-  const rx = dot3(rel, right);
-  const ry = dot3(rel, up);
-
-  if (projection === 'perspective') {
-    const camDist = Math.max(2, norm3(sub3(target, camPos)));
-    const denom = Math.max(0.5, depth);
-    const factor = (scalePx * camDist) / denom;
-    return {
-      x: width / 2 + rx * factor,
-      y: height / 2 - ry * factor,
-      depth,
-    };
-  }
-
-  return {
-    x: width / 2 + rx * scalePx,
-    y: height / 2 - ry * scalePx,
-    depth,
-  };
+  const basis = buildCameraBasis(camPos, target);
+  const camDist = Math.max(2, norm3(sub3(target, camPos)));
+  return projectWithBasis(p, camPos, camDist, basis, width, height, projection, scalePx);
 }
 
 /**
@@ -162,32 +188,48 @@ export function exportScene3DToVectorSvg(
   }
   const scalePx = Math.max(24, Math.min(82, (width * 0.36) / maxHalfX, (height * 0.36) / maxHalfY));
 
-  const P = (v: Vec3) => projectPoint3D(v, camPos, target, width, height, proj, scalePx);
+  const basis = buildCameraBasis(camPos, target);
+  const camDist = Math.max(2, norm3(sub3(target, camPos)));
+  const P = (v: Vec3) => projectWithBasis(v, camPos, camDist, basis, width, height, proj, scalePx);
 
   const elements: string[] = [];
-  const labelItems: Array<{ x: number; y: number; text: string; color: string }> = [];
+  const labelInputs: LabelInput[] = [];
+  const edgeObstacles: EdgeObstacle2D[] = [];
+  const isCompact = Math.min(width, height) < 360;
+  const labelFontSize = isCompact ? 12 : 16;
 
   // 1. Axes if enabled
   if (scene.showAxes) {
     const o = P({ x: 0, y: 0, z: 0 });
-    const axes: Array<[Vec3, string, string]> = [
-      [{ x: 5.5, y: 0, z: 0 }, '#DC2626', 'x'],
-      [{ x: 0, y: 5.5, z: 0 }, '#059669', 'y'],
-      [{ x: 0, y: 0, z: 5.5 }, '#2563EB', 'z'],
+    const axes: Array<[string, Vec3, string, string]> = [
+      ['_axis_x', { x: 5.5, y: 0, z: 0 }, '#DC2626', 'x'],
+      ['_axis_y', { x: 0, y: 5.5, z: 0 }, '#059669', 'y'],
+      ['_axis_z', { x: 0, y: 0, z: 5.5 }, '#0284C7', 'z'],
     ];
-    for (const [end, color, lbl] of axes) {
+    for (const [axisId, end, color, lbl] of axes) {
       const e = P(end);
       elements.push(
         `<line x1="${o.x.toFixed(1)}" y1="${o.y.toFixed(1)}" x2="${e.x.toFixed(1)}" y2="${e.y.toFixed(1)}" stroke="${color}" stroke-width="1.5" stroke-opacity="0.85" />`
       );
-      labelItems.push({ x: e.x + 8, y: e.y - 4, text: lbl, color });
+      edgeObstacles.push({ x1: o.x, y1: o.y, x2: e.x, y2: e.y });
+      labelInputs.push({
+        id: axisId,
+        objectId: axisId,
+        text: lbl,
+        category: 'axis',
+        color,
+        anchorX: e.x,
+        anchorY: e.y,
+        preferredDir: { x: e.x - o.x, y: e.y - o.y },
+        anchorRadius: isCompact ? 5 : 8,
+      });
     }
   }
 
   // 2. Planes (soft translucent patches)
   for (const id of scene.order) {
     const o = scene.objects[id];
-    if (!o || !o.valid || o.kind !== 'plane') continue;
+    if (!o || !o.valid || o.style.visible === false || o.kind !== 'plane') continue;
     const ext = o.style.planeExtent ?? 4.5;
     const { u, v } = planeBasis(o.normal);
     const corners = [
@@ -201,14 +243,23 @@ export function exportScene3DToVectorSvg(
       `<polygon points="${ptsAttr}" fill="${o.style.color}" fill-opacity="${(o.style.opacity ?? 0.16).toFixed(2)}" stroke="${o.style.color}" stroke-width="1.2" stroke-opacity="0.65" />`
     );
     if (scene.showLabels && o.style.showLabel !== false) {
-      labelItems.push({ x: corners[2].x - 10, y: corners[2].y + 14, text: o.label, color: o.style.color });
+      labelInputs.push({
+        id: o.id,
+        objectId: o.id,
+        text: o.label,
+        category: 'plane',
+        color: o.style.color,
+        anchorX: corners[2].x,
+        anchorY: corners[2].y,
+        userOffset: o.style.labelOffset,
+      });
     }
   }
 
   // 3. Solids (faces + camera-computed hidden dashed & visible solid edges)
   for (const id of scene.order) {
     const o = scene.objects[id];
-    if (!o || !o.valid || o.kind !== 'solid') continue;
+    if (!o || !o.valid || o.style.visible === false || o.kind !== 'solid') continue;
     if (scene.displayMode !== 'wireframe' && o.style.showFaces !== false) {
       for (const f of o.faces) {
         const pts = f.indices.map((vi) => P(o.vertices[vi]));
@@ -230,6 +281,7 @@ export function exportScene3DToVectorSvg(
         elements.push(
           `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${stroke}" stroke-width="${dashed ? 1.5 : 2.2}" ${dashed ? 'stroke-dasharray="7 5"' : ''} stroke-linecap="round" />`
         );
+        edgeObstacles.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
       }
     }
     if (o.style.showVertices !== false) {
@@ -239,7 +291,15 @@ export function exportScene3DToVectorSvg(
           `<circle cx="${pv.x.toFixed(1)}" cy="${pv.y.toFixed(1)}" r="3.6" fill="#0F766E" stroke="#FFFFFF" stroke-width="1.4" />`
         );
         if (scene.showLabels && o.vertexLabels[idx]) {
-          labelItems.push({ x: pv.x + 8, y: pv.y - 6, text: o.vertexLabels[idx], color: '#0F172A' });
+          labelInputs.push({
+            id: `${o.id}_v_${idx}`,
+            objectId: o.id,
+            text: o.vertexLabels[idx],
+            category: 'point',
+            color: '#0F172A',
+            anchorX: pv.x,
+            anchorY: pv.y,
+          });
         }
       });
     }
@@ -248,7 +308,7 @@ export function exportScene3DToVectorSvg(
   // 4. Polygons & Cross Sections
   for (const id of scene.order) {
     const o = scene.objects[id];
-    if (!o || !o.valid) continue;
+    if (!o || !o.valid || o.style.visible === false) continue;
     if (o.kind === 'polygon' && o.vertices.length >= 3) {
       const pts = o.vertices.map(P);
       const ptsAttr = pts.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
@@ -272,7 +332,15 @@ export function exportScene3DToVectorSvg(
         if (o.vertexLabels[idx]) {
           const pv = P(v);
           elements.push(`<circle cx="${pv.x.toFixed(1)}" cy="${pv.y.toFixed(1)}" r="4" fill="${o.style.color}" stroke="#FFFFFF" stroke-width="1.4" />`);
-          labelItems.push({ x: pv.x + 8, y: pv.y - 6, text: o.vertexLabels[idx], color: '#92400E' });
+          labelInputs.push({
+            id: `${o.id}_cs_${idx}`,
+            objectId: o.id,
+            text: o.vertexLabels[idx],
+            category: 'point',
+            color: '#92400E',
+            anchorX: pv.x,
+            anchorY: pv.y,
+          });
         }
       });
     }
@@ -281,7 +349,7 @@ export function exportScene3DToVectorSvg(
   // 5. Segments, Lines, Rays, Vectors, Circles
   for (const id of scene.order) {
     const o = scene.objects[id];
-    if (!o || !o.valid) continue;
+    if (!o || !o.valid || o.style.visible === false) continue;
     if (o.style.isAuxiliary && !scene.showAuxiliary) continue;
 
     if (o.kind === 'segment') {
@@ -290,14 +358,25 @@ export function exportScene3DToVectorSvg(
       elements.push(
         `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${o.style.color}" stroke-width="${o.style.lineWidth ?? 2}" ${o.style.dashed ? 'stroke-dasharray="7 5"' : ''} stroke-linecap="round" />`
       );
+      edgeObstacles.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
     } else if (o.kind === 'line') {
       const a = P(add3(o.origin, scale3(o.direction, -7)));
       const b = P(add3(o.origin, scale3(o.direction, 7)));
       elements.push(
         `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${o.style.color}" stroke-width="${o.style.lineWidth ?? 1.8}" ${o.style.dashed ? 'stroke-dasharray="6 4"' : ''} />`
       );
+      edgeObstacles.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
       if (scene.showLabels && o.style.showLabel !== false) {
-        labelItems.push({ x: b.x - 16, y: b.y - 8, text: o.label, color: o.style.color });
+        labelInputs.push({
+          id: o.id,
+          objectId: o.id,
+          text: o.label,
+          category: 'line',
+          color: o.style.color,
+          anchorX: b.x,
+          anchorY: b.y,
+          userOffset: o.style.labelOffset,
+        });
       }
     } else if (o.kind === 'ray') {
       const a = P(o.origin);
@@ -305,16 +384,27 @@ export function exportScene3DToVectorSvg(
       elements.push(
         `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${o.style.color}" stroke-width="${o.style.lineWidth ?? 2}" />`
       );
+      edgeObstacles.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
     } else if (o.kind === 'vector') {
       const a = P(o.origin);
       const b = P(add3(o.origin, o.components));
       elements.push(
         `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${o.style.color}" stroke-width="2.5" marker-end="url(#vecArrow)" />`
       );
+      edgeObstacles.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
       if (scene.showLabels && o.style.showLabel !== false) {
         const mid = midpoint3(o.origin, add3(o.origin, o.components));
         const pm = P(mid);
-        labelItems.push({ x: pm.x + 8, y: pm.y - 8, text: o.label, color: o.style.color });
+        labelInputs.push({
+          id: o.id,
+          objectId: o.id,
+          text: o.label,
+          category: 'vector',
+          color: o.style.color,
+          anchorX: pm.x,
+          anchorY: pm.y,
+          userOffset: o.style.labelOffset,
+        });
       }
     } else if (o.kind === 'circle') {
       const { u, v } = planeBasis(o.normal);
@@ -332,49 +422,65 @@ export function exportScene3DToVectorSvg(
   // 6. Points & Measurements & Formulas
   for (const id of scene.order) {
     const o = scene.objects[id];
-    if (!o || !o.valid) continue;
+    if (!o || !o.valid || o.style.visible === false) continue;
     if (o.kind === 'point') {
       const pt = P(o.position);
       elements.push(
         `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4.5" fill="${o.style.color}" stroke="#FFFFFF" stroke-width="1.6" />`
       );
       if (scene.showLabels && o.style.showLabel !== false) {
-        labelItems.push({
-          x: pt.x + 9 + (o.style.labelOffset?.dx ?? 0),
-          y: pt.y - 8 + (o.style.labelOffset?.dy ?? 0),
+        labelInputs.push({
+          id: o.id,
+          objectId: o.id,
           text: o.label,
+          category: o.label === 'O' ? 'origin' : 'point',
           color: '#0F172A',
+          anchorX: pt.x,
+          anchorY: pt.y,
+          userOffset: o.style.labelOffset,
         });
       }
     } else if (o.kind === 'measurement') {
       const pt = P(o.anchor);
-      labelItems.push({ x: pt.x + 6, y: pt.y - 6, text: `${o.label}: ${o.formattedValue}`, color: '#0F766E' });
+      labelInputs.push({
+        id: o.id,
+        objectId: o.id,
+        text: `${o.label}: ${o.formattedValue}`,
+        category: 'measure',
+        color: '#0F766E',
+        anchorX: pt.x,
+        anchorY: pt.y,
+        userOffset: o.style.labelOffset,
+      });
     } else if (o.kind === 'formula') {
       const pt = P(o.position);
-      labelItems.push({ x: pt.x, y: pt.y, text: o.label || o.latex.replace(/\$/g, ''), color: '#1E293B' });
+      labelInputs.push({
+        id: o.id,
+        objectId: o.id,
+        text: o.label || o.latex.replace(/\$/g, ''),
+        category: 'formula',
+        color: '#1E293B',
+        anchorX: pt.x,
+        anchorY: pt.y,
+        userOffset: o.style.labelOffset,
+      });
     }
   }
 
-  // 7. Collision avoidance pass for labels so labels never overlap or clip
-  for (let pass = 0; pass < 6; pass++) {
-    for (let i = 0; i < labelItems.length; i++) {
-      for (let j = i + 1; j < labelItems.length; j++) {
-        const dx = labelItems[j].x - labelItems[i].x;
-        const dy = labelItems[j].y - labelItems[i].y;
-        if (Math.abs(dx) < 34 && Math.abs(dy) < 20) {
-          const pushY = dy >= 0 ? 10 : -10;
-          labelItems[i].y -= pushY * 0.5;
-          labelItems[j].y += pushY * 0.5;
-        }
-      }
-      labelItems[i].x = Math.max(18, Math.min(width - 90, labelItems[i].x));
-      labelItems[i].y = Math.max(24, Math.min(height - 16, labelItems[i].y));
-    }
-  }
+  // 7. Unified GeometryLabelManager collision-free layout
+  const labelManager = new GeometryLabelManager();
+  const resolvedLabels = labelManager.update(labelInputs, {
+    width,
+    height,
+    fontSize: labelFontSize,
+    dt: 0,
+    edges: edgeObstacles,
+    compact: isCompact,
+  });
 
-  for (const lbl of labelItems) {
+  for (const lbl of resolvedLabels) {
     elements.push(
-      `<text x="${lbl.x.toFixed(1)}" y="${lbl.y.toFixed(1)}" font-family="Be Vietnam Pro, sans-serif" font-size="16" font-weight="700" fill="${lbl.color}" stroke="#FFFFFF" stroke-width="3.5" paint-order="stroke">${escapeXml(lbl.text)}</text>`
+      `<text x="${lbl.x.toFixed(1)}" y="${lbl.y.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-family="Be Vietnam Pro, system-ui, sans-serif" font-size="${labelFontSize}" font-weight="700" fill="${lbl.color}" stroke="#FFFFFF" stroke-width="3.6" stroke-linejoin="round" paint-order="stroke">${escapeXml(lbl.text)}</text>`
     );
   }
 

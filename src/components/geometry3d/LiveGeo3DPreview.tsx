@@ -1,14 +1,20 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { exportScene3DToVectorSvg, isSolidEdgeHidden, projectPoint3D } from '../../geometry3d/export3d';
-import { add3, cross3, dot3, normalize3, scale3, sub3, v3 } from '../../geometry3d/math3d';
-import { buildSolidGeometryData } from '../../geometry3d/engine3d';
-import type { CameraState3D, Geo3DScene, Geo3DSolid, Vec3 } from '../../geometry3d/types3d';
+import React, { useCallback, useEffect, useId, useMemo, useRef } from 'react';
+import { exportScene3DToVectorSvg } from '../../geometry3d/export3d';
+import { GeometryLabelManager } from '../../geometry3d/labelManager';
+import {
+  buildShowcaseModel,
+  projectShowcaseFrame,
+  type ProjectedShowcaseFrame,
+  type ShowcaseVariant,
+} from '../../geometry3d/showcasePreview3d';
+import { v3 } from '../../geometry3d/math3d';
+import type { CameraState3D, Geo3DScene } from '../../geometry3d/types3d';
 
 interface LiveGeo3DPreviewProps {
   /** Optional real Geo3DScene to render as an accurate live SVG projection */
   scene?: Geo3DScene;
   /** Showcase variant when no custom scene is supplied */
-  variant?: 'hero_pyramid' | 'lab_cube_section' | 'oxyz_axes';
+  variant?: ShowcaseVariant;
   width?: number;
   height?: number;
   animate?: boolean;
@@ -16,10 +22,18 @@ interface LiveGeo3DPreviewProps {
   className?: string;
 }
 
+const INITIAL_ANGLE = 0.58;
+const ROTATION_SPEED_RAD_PER_SEC = 0.34;
+
 /**
  * Lightweight code-driven 3D projection preview (zero Three.js import).
- * Renders real solid visible edges, camera-dependent dashed hidden edges,
- * shaded cross-sections, altitude and Oxyz axes using our pure 3D projection math.
+ *
+ * Architecture:
+ * - Static 3D solid built ONCE per variant (zero per-frame geometry rebuilds).
+ * - Single requestAnimationFrame loop mutates SVG DOM attributes directly
+ *   (zero per-frame React re-renders, zero label DOM recreation, zero key changes).
+ * - Uses shared GeometryLabelManager with hysteresis + edge avoidance so labels
+ *   (including S and z) never flicker, jump, disappear, or overlap across 360°.
  */
 export const LiveGeo3DPreview: React.FC<LiveGeo3DPreviewProps> = ({
   scene,
@@ -30,35 +44,183 @@ export const LiveGeo3DPreview: React.FC<LiveGeo3DPreviewProps> = ({
   reducedMotion = false,
   className = '',
 }) => {
-  const [angle, setAngle] = useState(0.58);
+  const gradId = useId();
+  const angleRef = useRef<number>(INITIAL_ANGLE);
   const rafRef = useRef<number | null>(null);
-  const lastRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const pausedByUserRef = useRef<boolean>(false);
+  const labelManagerRef = useRef<GeometryLabelManager>(new GeometryLabelManager());
 
+  // DOM refs for direct rAF updates (zero React churn during animation)
+  const axisXRef = useRef<SVGLineElement | null>(null);
+  const axisYRef = useRef<SVGLineElement | null>(null);
+  const axisZRef = useRef<SVGLineElement | null>(null);
+  const hiddenEdgeRefs = useRef<Array<SVGLineElement | null>>([]);
+  const visibleEdgeRefs = useRef<Array<SVGLineElement | null>>([]);
+  const altitudeRef = useRef<SVGLineElement | null>(null);
+  const sectionPolyRef = useRef<SVGPolygonElement | null>(null);
+  const dotRefs = useRef<Map<string, SVGCircleElement>>(new Map());
+  const labelRefs = useRef<Map<string, SVGTextElement>>(new Map());
+
+  // Static showcase model built ONCE per variant
+  const model = useMemo(() => (scene ? null : buildShowcaseModel(variant)), [scene, variant]);
+
+  // Initial deterministic frame (dt = 0) for instant SSR/first-paint layout
+  const initialFrame = useMemo<ProjectedShowcaseFrame | null>(() => {
+    if (!model) return null;
+    const mgr = new GeometryLabelManager();
+    return projectShowcaseFrame(model, INITIAL_ANGLE, width, height, mgr, 0);
+  }, [model, width, height]);
+
+  // Reset hysteresis state cleanly whenever variant or viewport dimensions change
   useEffect(() => {
+    labelManagerRef.current.reset();
+    angleRef.current = INITIAL_ANGLE;
+  }, [variant, width, height]);
+
+  // Apply a computed frame directly to the stable SVG DOM nodes in a single tick
+  const applyFrameToDom = useCallback((frame: ProjectedShowcaseFrame) => {
+    const setLine = (
+      el: SVGLineElement | null,
+      x1: number,
+      y1: number,
+      x2: number,
+      y2: number
+    ) => {
+      if (!el) return;
+      el.setAttribute('x1', x1.toFixed(2));
+      el.setAttribute('y1', y1.toFixed(2));
+      el.setAttribute('x2', x2.toFixed(2));
+      el.setAttribute('y2', y2.toFixed(2));
+    };
+
+    setLine(axisXRef.current, frame.axes.o.x, frame.axes.o.y, frame.axes.x.x, frame.axes.x.y);
+    setLine(axisYRef.current, frame.axes.o.x, frame.axes.o.y, frame.axes.y.x, frame.axes.y.y);
+    setLine(axisZRef.current, frame.axes.o.x, frame.axes.o.y, frame.axes.z.x, frame.axes.z.y);
+
+    for (let i = 0; i < frame.edges.length; i++) {
+      const e = frame.edges[i];
+      const hidEl = hiddenEdgeRefs.current[i];
+      const visEl = visibleEdgeRefs.current[i];
+      if (hidEl) {
+        if (e.hidden) {
+          setLine(hidEl, e.x1, e.y1, e.x2, e.y2);
+          hidEl.setAttribute('visibility', 'visible');
+        } else {
+          hidEl.setAttribute('visibility', 'hidden');
+        }
+      }
+      if (visEl) {
+        if (!e.hidden) {
+          setLine(visEl, e.x1, e.y1, e.x2, e.y2);
+          visEl.setAttribute('visibility', 'visible');
+        } else {
+          visEl.setAttribute('visibility', 'hidden');
+        }
+      }
+    }
+
+    if (frame.altitude && altitudeRef.current) {
+      setLine(
+        altitudeRef.current,
+        frame.altitude.x1,
+        frame.altitude.y1,
+        frame.altitude.x2,
+        frame.altitude.y2
+      );
+    }
+
+    if (sectionPolyRef.current) {
+      sectionPolyRef.current.setAttribute(
+        'points',
+        frame.sectionPoints.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')
+      );
+    }
+
+    for (const d of frame.dots) {
+      const dotEl = dotRefs.current.get(d.id);
+      if (dotEl) {
+        dotEl.setAttribute('cx', d.x.toFixed(2));
+        dotEl.setAttribute('cy', d.y.toFixed(2));
+      }
+    }
+
+    for (const lbl of frame.labels) {
+      const textEl = labelRefs.current.get(lbl.id);
+      if (textEl) {
+        textEl.setAttribute('x', lbl.x.toFixed(2));
+        textEl.setAttribute('y', lbl.y.toFixed(2));
+      }
+    }
+  }, []);
+
+  // Single continuous delta-time rAF loop for showcase mode (zero React re-renders!)
+  useEffect(() => {
+    if (scene || !model) return;
+
+    // Seed label manager immediately at initial angle
+    const first = projectShowcaseFrame(
+      model,
+      angleRef.current,
+      width,
+      height,
+      labelManagerRef.current,
+      0
+    );
+    applyFrameToDom(first);
+
     if (!animate || reducedMotion) return;
+
     let mounted = true;
+    lastTimeRef.current = 0;
+
     const tick = (now: number) => {
       if (!mounted) return;
-      if (lastRef.current === 0) lastRef.current = now;
-      const dt = Math.min(0.05, (now - lastRef.current) / 1000);
-      lastRef.current = now;
-      setAngle((prev) => (prev + dt * 0.34) % (Math.PI * 2));
+      if (lastTimeRef.current === 0) {
+        lastTimeRef.current = now;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const rawDt = (now - lastTimeRef.current) / 1000;
+      lastTimeRef.current = now;
+      const dt = Math.min(0.05, Math.max(0, rawDt));
+
+      if (!pausedByUserRef.current && !document.hidden && dt > 0) {
+        // Continuous angle progression; wrap smoothly modulo 2*PI with zero visual jump
+        angleRef.current = (angleRef.current + dt * ROTATION_SPEED_RAD_PER_SEC) % (Math.PI * 2);
+        const frame = projectShowcaseFrame(
+          model,
+          angleRef.current,
+          width,
+          height,
+          labelManagerRef.current,
+          dt
+        );
+        applyFrameToDom(frame);
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
+
     rafRef.current = requestAnimationFrame(tick);
+
     return () => {
       mounted = false;
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-      lastRef.current = 0;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      lastTimeRef.current = 0;
     };
-  }, [animate, reducedMotion]);
+  }, [scene, model, width, height, animate, reducedMotion, applyFrameToDom]);
 
-  // If a real Geo3DScene is passed, render its crisp vector projection directly
+  // Custom Geo3DScene thumbnail mode (Templates, Guide, My Drawings)
   const sceneSvgData = useMemo(() => {
     if (!scene) return null;
     const radius = 10.5;
     const cam: CameraState3D = {
-      position: v3(Math.cos(angle) * radius, Math.sin(angle) * radius, 6.2),
+      position: v3(Math.cos(INITIAL_ANGLE) * radius, Math.sin(INITIAL_ANGLE) * radius, 6.2),
       target: v3(0, 0, 1.0),
       projection: 'orthographic',
       zoom: 1,
@@ -69,107 +231,7 @@ export const LiveGeo3DPreview: React.FC<LiveGeo3DPreviewProps> = ({
       showLabels: scene.order.length <= 16,
     };
     return exportScene3DToVectorSvg(projectedScene, width, height);
-  }, [scene, angle, width, height]);
-
-  // Built-in showcase geometries (pure mathematical projection)
-  const showcase = useMemo(() => {
-    if (scene) return null;
-    const radius = 9.5;
-    const camPos = v3(Math.cos(angle) * radius, Math.sin(angle) * radius, 5.2);
-    const camTarget = v3(0, 0, 1.05);
-    const scalePx = Math.min(width, height) / 5.4;
-
-    const proj = (p: Vec3) =>
-      projectPoint3D(p, camPos, camTarget, width, height, 'orthographic', scalePx);
-
-    if (variant === 'lab_cube_section') {
-      const solid = buildSolidGeometryData('cube', v3(0, 0, 0), v3(0, 0, 0), { a: 2.5 });
-      const verts = solid.vertices;
-      const structuralEdges = solid.edges.filter((e) => !e.isDiagonal && !e.isAltitude && !e.isAxis);
-      const pseudoSolid = { vertices: verts, faces: solid.faces } as Geo3DSolid;
-      const hiddenFlags = structuralEdges.map((e) =>
-        isSolidEdgeHidden(pseudoSolid, e.a, e.b, camPos)
-      );
-      // Dynamic plane slicing cube across 6 midpoints -> regular hexagon cross-section
-      const m1 = scale3(add3(verts[0], verts[1]), 0.5);
-      const m2 = scale3(add3(verts[1], verts[2]), 0.5);
-      const m3 = scale3(add3(verts[2], verts[6]), 0.5);
-      const m4 = scale3(add3(verts[6], verts[7]), 0.5);
-      const m5 = scale3(add3(verts[7], verts[4]), 0.5);
-      const m6 = scale3(add3(verts[4], verts[0]), 0.5);
-      const sectionPts = [m1, m2, m3, m4, m5, m6].map(proj);
-
-      return {
-        title: 'Thiết diện hình lập phương',
-        verts: verts.map((v, i) => ({ ...proj(v), label: solid.defaultLabels[i] ?? `V${i + 1}` })),
-        edges: structuralEdges.map((e, i) => ({
-          p1: proj(verts[e.a]),
-          p2: proj(verts[e.b]),
-          hidden: hiddenFlags[i],
-        })),
-        sectionPts,
-        altitude: null as null | { p1: { x: number; y: number }; p2: { x: number; y: number } },
-        axes: {
-          o: proj(v3(0, 0, 0)),
-          x: proj(v3(2.4, 0, 0)),
-          y: proj(v3(0, 2.4, 0)),
-          z: proj(v3(0, 0, 3.1)),
-        },
-        specialLabels: [
-          { ...proj(m1), text: 'M' },
-          { ...proj(m3), text: 'N' },
-          { ...proj(m5), text: 'P' },
-        ],
-      };
-    }
-
-    // Default hero_pyramid: Regular square pyramid S.ABCD with altitude SO + cross-section MNPQ
-    const solid = buildSolidGeometryData('regular_pyramid', v3(0, 0, 0), v3(0, 0, 0), {
-      sides: 4,
-      a: 2.8,
-      h: 2.9,
-    });
-    const verts = solid.vertices; // 0..3 base ABCD, 4 apex S
-    const structuralEdges = solid.edges.filter((e) => !e.isDiagonal && !e.isAltitude && !e.isAxis);
-    const pseudoSolid = { vertices: verts, faces: solid.faces } as Geo3DSolid;
-    const hiddenFlags = structuralEdges.map((e) =>
-      isSolidEdgeHidden(pseudoSolid, e.a, e.b, camPos)
-    );
-    const O = v3(0, 0, 0);
-    const S = verts[4];
-    const M = scale3(add3(S, verts[0]), 0.5);
-    const N = scale3(add3(S, verts[1]), 0.5);
-    const P = scale3(add3(S, verts[2]), 0.5);
-    const Q = scale3(add3(S, verts[3]), 0.5);
-
-    const faceNormal = normalize3(cross3(sub3(verts[1], verts[0]), sub3(verts[2], verts[0])));
-    const viewDir = normalize3(sub3(camPos, O));
-    const _baseVisible = faceNormal && viewDir ? dot3(faceNormal, viewDir) > 0 : false;
-    void _baseVisible;
-
-    return {
-      title: 'Hình chóp S.ABCD & thiết diện',
-      verts: verts.map((v, i) => ({ ...proj(v), label: solid.defaultLabels[i] ?? `V${i + 1}` })),
-      edges: structuralEdges.map((e, i) => ({
-        p1: proj(verts[e.a]),
-        p2: proj(verts[e.b]),
-        hidden: hiddenFlags[i],
-      })),
-      sectionPts: [M, N, P, Q].map(proj),
-      altitude: { p1: proj(S), p2: proj(O) },
-      axes: {
-        o: proj(v3(0, 0, 0)),
-        x: proj(v3(2.3, 0, 0)),
-        y: proj(v3(0, 2.3, 0)),
-        z: proj(v3(0, 0, 3.4)),
-      },
-      specialLabels: [
-        { ...proj(O), text: 'O' },
-        { ...proj(M), text: 'M' },
-        { ...proj(P), text: 'P' },
-      ],
-    };
-  }, [scene, variant, angle, width, height]);
+  }, [scene, width, height]);
 
   if (sceneSvgData) {
     return (
@@ -180,110 +242,180 @@ export const LiveGeo3DPreview: React.FC<LiveGeo3DPreviewProps> = ({
     );
   }
 
-  if (!showcase) return null;
+  if (!model || !initialFrame) return null;
+
+  const isCompact = Math.min(width, height) < 300;
+  const labelFontSize = isCompact ? 12 : 13;
 
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       className={`w-full h-full select-none ${className}`}
       role="img"
-      aria-label={showcase.title}
+      aria-label={model.title}
+      data-preview-variant={variant}
+      onPointerEnter={() => {
+        pausedByUserRef.current = true;
+      }}
+      onPointerLeave={() => {
+        pausedByUserRef.current = false;
+      }}
     >
       <defs>
-        <linearGradient id="secFill3d" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.28" />
           <stop offset="100%" stopColor="#0F766E" stopOpacity="0.22" />
         </linearGradient>
       </defs>
 
-      {/* Subtle Oxyz axes */}
-      <g opacity="0.65">
-        <line x1={showcase.axes.o.x} y1={showcase.axes.o.y} x2={showcase.axes.x.x} y2={showcase.axes.x.y} stroke="#DC2626" strokeWidth="1.2" />
-        <line x1={showcase.axes.o.x} y1={showcase.axes.o.y} x2={showcase.axes.y.x} y2={showcase.axes.y.y} stroke="#059669" strokeWidth="1.2" />
-        <line x1={showcase.axes.o.x} y1={showcase.axes.o.y} x2={showcase.axes.z.x} y2={showcase.axes.z.y} stroke="#0284C7" strokeWidth="1.2" />
-        <text x={showcase.axes.x.x + 5} y={showcase.axes.x.y + 4} fill="#DC2626" fontSize="11" fontWeight="600">x</text>
-        <text x={showcase.axes.y.x + 5} y={showcase.axes.y.y + 4} fill="#059669" fontSize="11" fontWeight="600">y</text>
-        <text x={showcase.axes.z.x + 5} y={showcase.axes.z.y + 2} fill="#0284C7" fontSize="11" fontWeight="600">z</text>
+      {/* Layer 1: Subtle Oxyz coordinate axes */}
+      <g opacity="0.72" data-layer="axes-3d">
+        <line
+          ref={axisXRef}
+          x1={initialFrame.axes.o.x}
+          y1={initialFrame.axes.o.y}
+          x2={initialFrame.axes.x.x}
+          y2={initialFrame.axes.x.y}
+          stroke="#DC2626"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+        />
+        <line
+          ref={axisYRef}
+          x1={initialFrame.axes.o.x}
+          y1={initialFrame.axes.o.y}
+          x2={initialFrame.axes.y.x}
+          y2={initialFrame.axes.y.y}
+          stroke="#059669"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+        />
+        <line
+          ref={axisZRef}
+          x1={initialFrame.axes.o.x}
+          y1={initialFrame.axes.o.y}
+          x2={initialFrame.axes.z.x}
+          y2={initialFrame.axes.z.y}
+          stroke="#0284C7"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+        />
       </g>
 
-      {/* Hidden dashed edges */}
-      {showcase.edges
-        .filter((e) => e.hidden)
-        .map((e, i) => (
+      {/* Layer 2: Hidden dashed edges (behind cross-section, zero DOM recreation) */}
+      <g data-layer="hidden-edges-3d">
+        {initialFrame.edges.map((e, i) => (
           <line
             key={`hid-${i}`}
-            x1={e.p1.x}
-            y1={e.p1.y}
-            x2={e.p2.x}
-            y2={e.p2.y}
+            ref={(el) => {
+              hiddenEdgeRefs.current[i] = el;
+            }}
+            x1={e.x1}
+            y1={e.y1}
+            x2={e.x2}
+            y2={e.y2}
+            visibility={e.hidden ? 'visible' : 'hidden'}
             stroke="#64748B"
             strokeWidth="1.4"
             strokeDasharray="5 4"
+            strokeLinecap="round"
           />
         ))}
+      </g>
 
-      {/* Altitude SO */}
-      {showcase.altitude && (
+      {/* Layer 3: Altitude SO */}
+      {initialFrame.altitude && (
         <line
-          x1={showcase.altitude.p1.x}
-          y1={showcase.altitude.p1.y}
-          x2={showcase.altitude.p2.x}
-          y2={showcase.altitude.p2.y}
+          ref={altitudeRef}
+          x1={initialFrame.altitude.x1}
+          y1={initialFrame.altitude.y1}
+          x2={initialFrame.altitude.x2}
+          y2={initialFrame.altitude.y2}
           stroke="#D97706"
           strokeWidth="1.5"
           strokeDasharray="4 3"
+          strokeLinecap="round"
         />
       )}
 
-      {/* Cross-section polygon */}
+      {/* Layer 4: Shaded cross-section polygon */}
       <polygon
-        points={showcase.sectionPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
-        fill="url(#secFill3d)"
+        ref={sectionPolyRef}
+        points={initialFrame.sectionPoints.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ')}
+        fill={`url(#${gradId})`}
         stroke="#0284C7"
         strokeWidth="1.8"
+        strokeLinejoin="round"
       />
 
-      {/* Visible solid edges */}
-      {showcase.edges
-        .filter((e) => !e.hidden)
-        .map((e, i) => (
+      {/* Layer 5: Visible solid edges (in front of cross-section, zero DOM recreation) */}
+      <g data-layer="visible-edges-3d">
+        {initialFrame.edges.map((e, i) => (
           <line
             key={`vis-${i}`}
-            x1={e.p1.x}
-            y1={e.p1.y}
-            x2={e.p2.x}
-            y2={e.p2.y}
+            ref={(el) => {
+              visibleEdgeRefs.current[i] = el;
+            }}
+            x1={e.x1}
+            y1={e.y1}
+            x2={e.x2}
+            y2={e.y2}
+            visibility={e.hidden ? 'hidden' : 'visible'}
             stroke="#0F172A"
             strokeWidth="2"
             strokeLinecap="round"
           />
         ))}
+      </g>
 
-      {/* Vertices + crisp labels */}
-      {showcase.verts.map((v, i) => (
-        <g key={`v-${i}`}>
-          <circle cx={v.x} cy={v.y} r="3.4" fill="#0F766E" stroke="#FFFFFF" strokeWidth="1.2" />
+      {/* Layer 6: Vertex & special point markers */}
+      <g data-layer="points-3d">
+        {initialFrame.dots.map((d) => (
+          <circle
+            key={d.id}
+            ref={(el) => {
+              if (el) dotRefs.current.set(d.id, el);
+              else dotRefs.current.delete(d.id);
+            }}
+            cx={d.x}
+            cy={d.y}
+            r={d.isSpecial ? 2.8 : 3.4}
+            fill={d.isSpecial ? '#0284C7' : '#0F766E'}
+            stroke="#FFFFFF"
+            strokeWidth="1.2"
+          />
+        ))}
+      </g>
+
+      {/* Layer 7: Dedicated top-level screen-space label overlay (never occluded, zero flicker) */}
+      <g data-layer="labels-3d">
+        {initialFrame.labels.map((lbl) => (
           <text
-            x={v.x + (v.x < width * 0.5 ? -13 : 7)}
-            y={v.y + (v.y < height * 0.45 ? -7 : 13)}
-            fill="#0F172A"
-            fontSize="12"
+            key={lbl.id}
+            ref={(el) => {
+              if (el) labelRefs.current.set(lbl.id, el);
+              else labelRefs.current.delete(lbl.id);
+            }}
+            data-label-id={lbl.id}
+            data-label-text={lbl.text}
+            x={lbl.x}
+            y={lbl.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill={lbl.color}
+            fontFamily="Be Vietnam Pro, system-ui, sans-serif"
+            fontSize={lbl.category === 'axis' ? labelFontSize - 0.5 : labelFontSize}
             fontWeight="700"
+            fontStyle={lbl.category === 'axis' ? 'italic' : 'normal'}
+            stroke="#FFFFFF"
+            strokeWidth="3.6"
+            strokeLinejoin="round"
+            paintOrder="stroke"
           >
-            {v.label}
+            {lbl.text}
           </text>
-        </g>
-      ))}
-
-      {/* Special cross-section / foot labels */}
-      {showcase.specialLabels.map((pt, i) => (
-        <g key={`sp-${i}`}>
-          <circle cx={pt.x} cy={pt.y} r="2.8" fill="#0284C7" />
-          <text x={pt.x + 6} y={pt.y - 5} fill="#0369A1" fontSize="11" fontWeight="600">
-            {pt.text}
-          </text>
-        </g>
-      ))}
+        ))}
+      </g>
     </svg>
   );
 };

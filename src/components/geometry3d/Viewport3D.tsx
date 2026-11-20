@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -12,9 +13,15 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { getWorkingPlaneEquation } from '../../geometry3d/engine3d';
 import { isSolidEdgeHidden } from '../../geometry3d/export3d';
 import {
+  GeometryLabelManager,
+  type EdgeObstacle2D,
+  type LabelCategory,
+  type LabelInput,
+  type ResolvedLabel,
+} from '../../geometry3d/labelManager';
+import {
   add3,
   cross3,
-  dot3,
   lerp3,
   norm3,
   normalize3,
@@ -66,19 +73,19 @@ interface Viewport3DProps {
   onFallback2D?: () => void;
 }
 
-interface ProjectedLabel {
+interface LabelDef {
   id: string;
   objectId: string;
   text: string;
-  isMath?: boolean;
+  category: LabelCategory;
   color: string;
-  anchorX: number;
-  anchorY: number;
-  x: number;
-  y: number;
-  displaced: boolean;
+  isMath?: boolean;
   isAuxiliary?: boolean;
 }
+
+// Pre-allocated scratch vectors for zero-GC per-frame projection & auto-rotation
+const _projVec = new THREE.Vector3();
+const _rotOffset = new THREE.Vector3();
 
 function toThree(v: Vec3): THREE.Vector3 {
   return new THREE.Vector3(v.x, v.y, v.z);
@@ -185,56 +192,8 @@ function createSolidSegment(
   return new THREE.Line(geo, mat);
 }
 
-/**
- * Resolve screen-space label collisions iteratively so labels stay crisp, readable,
- * and inside viewport bounds; returns displaced flag for subtle leader lines.
- */
-function resolveLabelCollisions(
-  raw: ProjectedLabel[],
-  width: number,
-  height: number,
-  fontSize: number
-): ProjectedLabel[] {
-  const result = raw.map((item) => ({ ...item }));
-  const charW = fontSize * 0.62;
-  const boxH = fontSize + 10;
-
-  for (let iter = 0; iter < 12; iter++) {
-    for (let i = 0; i < result.length; i++) {
-      for (let j = i + 1; j < result.length; j++) {
-        const a = result[i];
-        const b = result[j];
-        const wa = Math.max(24, a.text.length * charW + 10);
-        const wb = Math.max(24, b.text.length * charW + 10);
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const overlapX = (wa + wb) * 0.5 - Math.abs(dx);
-        const overlapY = boxH - Math.abs(dy);
-        if (overlapX > 0 && overlapY > 0) {
-          if (overlapY < overlapX) {
-            const push = (overlapY * 0.52) * (dy >= 0 ? 1 : -1);
-            a.y -= push;
-            b.y += push;
-          } else {
-            const push = (overlapX * 0.52) * (dx >= 0 ? 1 : -1);
-            a.x -= push;
-            b.x += push;
-          }
-        }
-      }
-    }
-    for (const item of result) {
-      item.x = Math.max(22, Math.min(width - 28, item.x));
-      item.y = Math.max(20, Math.min(height - 18, item.y));
-    }
-  }
-
-  for (const item of result) {
-    const dist = Math.hypot(item.x - item.anchorX, item.y - item.anchorY);
-    item.displaced = dist > 20;
-  }
-  return result;
-}
+const LABEL_HALO_SHADOW =
+  '0 0 5px #FFFFFF, 0 0 3px #FFFFFF, 1px 0 0 #FFFFFF, -1px 0 0 #FFFFFF, 0 1px 0 #FFFFFF, 0 -1px 0 #FFFFFF';
 
 export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
   (
@@ -262,8 +221,17 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [contextLost, setContextLost] = useState(false);
     const [webglSupported] = useState(() => detectWebGLSupport());
-    const [labels, setLabels] = useState<ProjectedLabel[]>([]);
+    // Structural label metadata ONLY — never updated per-frame during rotation/orbit!
+    const [labelDefs, setLabelDefs] = useState<LabelDef[]>([]);
     const [hoverCoord, setHoverCoord] = useState<Vec3 | null>(null);
+    const hoverCoordRef = useRef<Vec3 | null>(null);
+
+    // Unified GeometryLabelManager + direct DOM refs for zero-flicker, zero-re-render label transforms
+    const labelManagerRef = useRef<GeometryLabelManager>(new GeometryLabelManager());
+    const lastLabelSigRef = useRef<string>('');
+    const latestResolvedRef = useRef<Map<string, ResolvedLabel>>(new Map());
+    const labelElRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const leaderElRefs = useRef<Map<string, SVGLineElement>>(new Map());
 
     // Three.js mutable refs
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -281,7 +249,11 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
 
     const isSoftwareGlRef = useRef(false);
     const renderQueuedRef = useRef(false);
+    const renderRafRef = useRef<number | null>(null);
     const rafLoopRef = useRef<number | null>(null);
+    const softTimerRef = useRef<number | null>(null);
+    const suppressControlChangeRef = useRef(false);
+    const userInteractingRef = useRef(false);
     const draggingPointIdRef = useRef<string | null>(null);
     const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
     const draggingLabelRef = useRef<{
@@ -375,211 +347,337 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
             hidden || isSpecial
               ? createDashedSegment(p1, p2, lineColor, 0.22, 0.14)
               : createSolidSegment(p1, p2, lineColor, 1);
+          line.renderOrder = hidden || isSpecial ? 1 : 2;
           line.userData = { geoId: id, kind: 'solid' };
           edgeGroup.add(line);
         }
       }
     }, [getCurrentCameraState]);
 
-    // Update projected HTML labels with screen-space collision avoidance
-    const updateProjectedLabels = useCallback(() => {
-      const container = containerRef.current;
-      const cam = activeCamRef.current;
-      if (!container || !cam) return;
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      if (width < 10 || height < 10) return;
+    // Apply latest resolved label coordinates directly to DOM nodes (zero React re-render)
+    const applyResolvedLabelsToDom = useCallback((resolvedMap: Map<string, ResolvedLabel>) => {
+      labelElRefs.current.forEach((el, id) => {
+        const lbl = resolvedMap.get(id);
+        if (!lbl) {
+          el.style.visibility = 'hidden';
+          return;
+        }
+        el.style.transform = `translate3d(${lbl.x.toFixed(1)}px, ${lbl.y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+        el.style.visibility = 'visible';
+      });
 
-      const curScene = scenePropRef.current;
-      if (!curScene.showLabels) {
-        setLabels([]);
-        return;
-      }
+      leaderElRefs.current.forEach((lineEl, id) => {
+        const lbl = resolvedMap.get(id);
+        if (!lbl || !lbl.displaced) {
+          lineEl.setAttribute('visibility', 'hidden');
+          return;
+        }
+        lineEl.setAttribute('x1', lbl.anchorX.toFixed(1));
+        lineEl.setAttribute('y1', lbl.anchorY.toFixed(1));
+        lineEl.setAttribute('x2', lbl.x.toFixed(1));
+        lineEl.setAttribute('y2', lbl.y.toFixed(1));
+        lineEl.setAttribute('visibility', 'visible');
+      });
+    }, []);
 
-      const projVec = (p: Vec3): { x: number; y: number; visible: boolean } => {
-        const v = toThree(p).project(cam);
-        const visible = v.z >= -1.05 && v.z <= 1.05;
-        return {
-          x: (v.x * 0.5 + 0.5) * width,
-          y: (-v.y * 0.5 + 0.5) * height,
-          visible,
+    // Ensure newly mounted label DOM nodes immediately receive their exact coordinates
+    useLayoutEffect(() => {
+      applyResolvedLabelsToDom(latestResolvedRef.current);
+    }, [labelDefs, applyResolvedLabelsToDom]);
+
+    // Project labels & edges through shared GeometryLabelManager and sync DOM in the same frame
+    const updateProjectedLabels = useCallback(
+      (dt = 0) => {
+        const container = containerRef.current;
+        const cam = activeCamRef.current;
+        if (!container || !cam) return;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        if (width < 10 || height < 10) return;
+
+        const curScene = scenePropRef.current;
+        if (!curScene.showLabels) {
+          latestResolvedRef.current.clear();
+          if (lastLabelSigRef.current !== '') {
+            lastLabelSigRef.current = '';
+            setLabelDefs([]);
+          }
+          return;
+        }
+
+        const projVec = (p: Vec3): { x: number; y: number; visible: boolean } => {
+          _projVec.set(p.x, p.y, p.z).project(cam);
+          const visible = _projVec.z >= -1.05 && _projVec.z <= 1.05;
+          return {
+            x: (_projVec.x * 0.5 + 0.5) * width,
+            y: (-_projVec.y * 0.5 + 0.5) * height,
+            visible,
+          };
         };
-      };
 
-      const raw: ProjectedLabel[] = [];
+        const inputs: LabelInput[] = [];
+        const edgeObstacles: EdgeObstacle2D[] = [];
 
-      // Axis labels when axes are shown
-      if (curScene.showAxes || curScene.displayMode === 'oxyz') {
-        const axesPts: Array<{ id: string; text: string; pos: Vec3; color: string }> = [
-          { id: '_axis_x', text: 'x', pos: v3(6.4, 0, 0), color: '#DC2626' },
-          { id: '_axis_y', text: 'y', pos: v3(0, 6.4, 0), color: '#059669' },
-          { id: '_axis_z', text: 'z', pos: v3(0, 0, 6.4), color: '#0284C7' },
-          { id: '_axis_o', text: 'O', pos: v3(-0.25, -0.25, -0.2), color: '#334155' },
-        ];
-        for (const a of axesPts) {
-          const sp = projVec(a.pos);
-          if (sp.visible) {
-            raw.push({
-              id: a.id,
-              objectId: a.id,
-              text: a.text,
-              color: a.color,
-              anchorX: sp.x,
-              anchorY: sp.y,
-              x: sp.x + 6,
-              y: sp.y - 6,
-              displaced: false,
+        // Axis labels & axis line obstacles when axes are shown
+        if (curScene.showAxes || curScene.displayMode === 'oxyz') {
+          const spOrigin = projVec(v3(0, 0, 0));
+          const axesDefs: Array<{ id: string; text: string; pos: Vec3; color: string }> = [
+            { id: '_axis_x', text: 'x', pos: v3(6.4, 0, 0), color: '#DC2626' },
+            { id: '_axis_y', text: 'y', pos: v3(0, 6.4, 0), color: '#059669' },
+            { id: '_axis_z', text: 'z', pos: v3(0, 0, 6.4), color: '#0284C7' },
+          ];
+          for (const a of axesDefs) {
+            const sp = projVec(a.pos);
+            if (sp.visible && spOrigin.visible) {
+              edgeObstacles.push({ x1: spOrigin.x, y1: spOrigin.y, x2: sp.x, y2: sp.y });
+            }
+            if (sp.visible) {
+              const dx = sp.x - spOrigin.x;
+              const dy = sp.y - spOrigin.y;
+              inputs.push({
+                id: a.id,
+                objectId: a.id,
+                text: a.text,
+                category: 'axis',
+                color: a.color,
+                anchorX: sp.x,
+                anchorY: sp.y,
+                preferredDir: a.id === '_axis_z' ? { x: dx + 14, y: dy - 8 } : { x: dx, y: dy },
+                anchorRadius: 8,
+              });
+            }
+          }
+          const hasSceneOriginPoint = curScene.order.some((oid) => {
+            const o = curScene.objects[oid];
+            return (
+              o &&
+              o.valid &&
+              o.style.visible !== false &&
+              o.kind === 'point' &&
+              o.label === 'O' &&
+              norm3(o.position) < 0.25
+            );
+          });
+          if (spOrigin.visible && !hasSceneOriginPoint) {
+            inputs.push({
+              id: '_axis_o',
+              objectId: '_axis_o',
+              text: 'O',
+              category: 'origin',
+              color: '#334155',
+              anchorX: spOrigin.x,
+              anchorY: spOrigin.y,
+              anchorRadius: 9,
             });
           }
         }
-      }
 
-      for (const id of curScene.order) {
-        const obj = curScene.objects[id];
-        if (!obj || !obj.valid || obj.style.visible === false) continue;
-        if (hideAuxLabelsRef.current && obj.style.isAuxiliary) continue;
-        const off = obj.style.labelOffset ?? { dx: 12, dy: -12 };
+        for (const id of curScene.order) {
+          const obj = curScene.objects[id];
+          if (!obj || !obj.valid || obj.style.visible === false) continue;
 
-        if (obj.kind === 'point') {
-          const sp = projVec(obj.position);
-          if (!sp.visible) continue;
-          const coordText =
-            curScene.displayMode === 'oxyz'
+          // Collect projected geometric edge obstacles for collision avoidance
+          if (obj.kind === 'solid' && obj.style.showEdges !== false) {
+            for (const edge of obj.edges) {
+              if (edge.isDiagonal && !obj.style.showDiagonals) continue;
+              if (edge.isAltitude && !obj.style.showAltitude) continue;
+              if (edge.isAxis && !obj.style.showAxis) continue;
+              const p1 = obj.vertices[edge.a];
+              const p2 = obj.vertices[edge.b];
+              if (!p1 || !p2) continue;
+              const s1 = projVec(p1);
+              const s2 = projVec(p2);
+              if (s1.visible && s2.visible) {
+                edgeObstacles.push({ x1: s1.x, y1: s1.y, x2: s2.x, y2: s2.y });
+              }
+            }
+          } else if (obj.kind === 'segment') {
+            const s1 = projVec(obj.p1);
+            const s2 = projVec(obj.p2);
+            if (s1.visible && s2.visible) {
+              edgeObstacles.push({ x1: s1.x, y1: s1.y, x2: s2.x, y2: s2.y });
+            }
+          }
+
+          if (hideAuxLabelsRef.current && obj.style.isAuxiliary) continue;
+
+          if (obj.kind === 'point') {
+            const sp = projVec(obj.position);
+            if (!sp.visible) continue;
+            const isOxyz = curScene.displayMode === 'oxyz';
+            const coordText = isOxyz
               ? `${obj.label}(${Number(obj.position.x.toFixed(1))}; ${Number(obj.position.y.toFixed(1))}; ${Number(obj.position.z.toFixed(1))})`
               : obj.label;
-          raw.push({
-            id: obj.id,
-            objectId: obj.id,
-            text: coordText,
-            color: obj.id === selectedIdRef.current ? '#0284C7' : '#0F172A',
-            anchorX: sp.x,
-            anchorY: sp.y,
-            x: sp.x + off.dx,
-            y: sp.y + off.dy,
-            displaced: false,
-            isAuxiliary: obj.style.isAuxiliary,
-          });
-        } else if (obj.kind === 'solid' && obj.style.showVertices !== false) {
-          obj.vertices.forEach((vert, idx) => {
-            const lbl = obj.vertexLabels[idx];
-            if (!lbl) return;
-            const sp = projVec(vert);
-            if (!sp.visible) return;
-            raw.push({
-              id: `${obj.id}_v_${idx}`,
+            inputs.push({
+              id: obj.id,
               objectId: obj.id,
-              text: lbl,
+              text: coordText,
+              category: isOxyz ? 'coord' : obj.label === 'O' ? 'origin' : 'point',
+              color: obj.id === selectedIdRef.current ? '#0284C7' : '#0F172A',
+              anchorX: sp.x,
+              anchorY: sp.y,
+              isAuxiliary: obj.style.isAuxiliary,
+              userOffset: obj.style.labelOffset,
+            });
+          } else if (obj.kind === 'solid' && obj.style.showVertices !== false) {
+            obj.vertices.forEach((vert, idx) => {
+              const lbl = obj.vertexLabels[idx];
+              if (!lbl) return;
+              const sp = projVec(vert);
+              if (!sp.visible) return;
+              inputs.push({
+                id: `${obj.id}_v_${idx}`,
+                objectId: obj.id,
+                text: lbl,
+                category: 'point',
+                color: '#0F172A',
+                anchorX: sp.x,
+                anchorY: sp.y,
+                anchorRadius: 9,
+              });
+            });
+          } else if (obj.kind === 'vector') {
+            const mid = add3(obj.origin, scale3(obj.components, 0.55));
+            const sp = projVec(mid);
+            if (!sp.visible) continue;
+            inputs.push({
+              id: obj.id,
+              objectId: obj.id,
+              text: obj.label,
+              category: 'vector',
+              color: obj.style.color || '#0284C7',
+              anchorX: sp.x,
+              anchorY: sp.y,
+              userOffset: obj.style.labelOffset,
+            });
+          } else if (obj.kind === 'plane') {
+            const { u, v } = planeBasis(obj.normal);
+            const hs = obj.style.planeExtent ?? 4.2;
+            const corner = add3(obj.anchor, add3(scale3(u, hs * 0.72), scale3(v, hs * 0.72)));
+            const sp = projVec(corner);
+            if (!sp.visible) continue;
+            inputs.push({
+              id: obj.id,
+              objectId: obj.id,
+              text: obj.label,
+              category: 'plane',
+              color: '#0369A1',
+              anchorX: sp.x,
+              anchorY: sp.y,
+              userOffset: obj.style.labelOffset,
+            });
+          } else if (obj.kind === 'measurement') {
+            const sp = projVec(obj.anchor);
+            if (!sp.visible) continue;
+            inputs.push({
+              id: obj.id,
+              objectId: obj.id,
+              text: obj.formattedValue,
+              category: 'measure',
+              color: '#0F766E',
+              anchorX: sp.x,
+              anchorY: sp.y,
+              userOffset: obj.style.labelOffset,
+            });
+          } else if (obj.kind === 'formula') {
+            const sp = projVec(obj.position);
+            if (!sp.visible) continue;
+            inputs.push({
+              id: obj.id,
+              objectId: obj.id,
+              text: obj.latex,
+              category: 'formula',
+              isMath: true,
               color: '#0F172A',
               anchorX: sp.x,
               anchorY: sp.y,
-              x: sp.x + (sp.x < width * 0.5 ? -14 : 10),
-              y: sp.y + (sp.y < height * 0.45 ? -10 : 14),
-              displaced: false,
+              userOffset: obj.style.labelOffset,
             });
-          });
-        } else if (obj.kind === 'vector') {
-          const mid = add3(obj.origin, scale3(obj.components, 0.55));
-          const sp = projVec(mid);
-          if (!sp.visible) continue;
-          raw.push({
-            id: obj.id,
-            objectId: obj.id,
-            text: obj.label,
-            color: obj.style.color || '#0284C7',
-            anchorX: sp.x,
-            anchorY: sp.y,
-            x: sp.x + off.dx,
-            y: sp.y + off.dy,
-            displaced: false,
-          });
-        } else if (obj.kind === 'plane') {
-          const { u, v } = planeBasis(obj.normal);
-          const hs = obj.style.planeExtent ?? 4.2;
-          const corner = add3(obj.anchor, add3(scale3(u, hs * 0.72), scale3(v, hs * 0.72)));
-          const sp = projVec(corner);
-          if (!sp.visible) continue;
-          raw.push({
-            id: obj.id,
-            objectId: obj.id,
-            text: obj.label,
-            color: '#0369A1',
-            anchorX: sp.x,
-            anchorY: sp.y,
-            x: sp.x + off.dx,
-            y: sp.y + off.dy,
-            displaced: false,
-          });
-        } else if (obj.kind === 'measurement') {
-          const sp = projVec(obj.anchor);
-          if (!sp.visible) continue;
-          raw.push({
-            id: obj.id,
-            objectId: obj.id,
-            text: obj.formattedValue,
-            color: '#0F766E',
-            anchorX: sp.x,
-            anchorY: sp.y,
-            x: sp.x + off.dx,
-            y: sp.y + off.dy,
-            displaced: false,
-          });
-        } else if (obj.kind === 'formula') {
-          const sp = projVec(obj.position);
-          if (!sp.visible) continue;
-          raw.push({
-            id: obj.id,
-            objectId: obj.id,
-            text: obj.latex,
-            isMath: true,
-            color: '#0F172A',
-            anchorX: sp.x,
-            anchorY: sp.y,
-            x: sp.x + off.dx,
-            y: sp.y + off.dy,
-            displaced: false,
-          });
-        } else if (obj.kind === 'line' && !obj.style.isAuxiliary) {
-          const tip = add3(obj.origin, scale3(obj.direction, 3.6));
-          const sp = projVec(tip);
-          if (!sp.visible) continue;
-          raw.push({
-            id: obj.id,
-            objectId: obj.id,
-            text: obj.label,
-            color: obj.style.color || '#1E293B',
-            anchorX: sp.x,
-            anchorY: sp.y,
-            x: sp.x + off.dx,
-            y: sp.y + off.dy,
-            displaced: false,
-          });
+          } else if (obj.kind === 'line' && !obj.style.isAuxiliary) {
+            const tip = add3(obj.origin, scale3(obj.direction, 3.6));
+            const sp = projVec(tip);
+            if (!sp.visible) continue;
+            inputs.push({
+              id: obj.id,
+              objectId: obj.id,
+              text: obj.label,
+              category: 'line',
+              color: obj.style.color || '#1E293B',
+              anchorX: sp.x,
+              anchorY: sp.y,
+              userOffset: obj.style.labelOffset,
+            });
+          }
         }
-      }
 
-      const resolved = resolveLabelCollisions(
-        raw,
-        width,
-        height,
-        presentationMode ? Math.max(18, labelFontSizeRef.current + 3) : labelFontSizeRef.current
-      );
-      setLabels(resolved);
-    }, [presentationMode]);
+        const effectiveFont = presentationMode
+          ? Math.max(18, labelFontSizeRef.current + 3)
+          : Math.max(15, labelFontSizeRef.current);
 
-    // Coalesced on-demand render
-    const requestRender = useCallback(() => {
-      if (renderQueuedRef.current) return;
-      renderQueuedRef.current = true;
-      requestAnimationFrame(() => {
-        renderQueuedRef.current = false;
+        const resolved = labelManagerRef.current.update(inputs, {
+          width,
+          height,
+          fontSize: effectiveFont,
+          dt,
+          edges: edgeObstacles,
+          padding: 12,
+          compact: false,
+        });
+
+        const nextMap = new Map<string, ResolvedLabel>();
+        let sig = '';
+        for (const item of resolved) {
+          nextMap.set(item.id, item);
+          sig += `${item.id}|${item.text}|${item.color}|${item.category}|${item.isMath ? 1 : 0};`;
+        }
+        latestResolvedRef.current = nextMap;
+
+        // Only trigger React reconciliation when structural label metadata changes!
+        if (sig !== lastLabelSigRef.current) {
+          lastLabelSigRef.current = sig;
+          setLabelDefs(
+            resolved.map((r) => ({
+              id: r.id,
+              objectId: r.objectId,
+              text: r.text,
+              category: r.category,
+              color: r.color,
+              isMath: r.isMath,
+              isAuxiliary: r.isAuxiliary,
+            }))
+          );
+        }
+
+        // Update screen positions directly in the same animation tick
+        applyResolvedLabelsToDom(nextMap);
+      },
+      [presentationMode, applyResolvedLabelsToDom]
+    );
+
+    // Synchronous render + synchronized label projection in a single frame
+    const renderFrameNow = useCallback(
+      (dt = 0) => {
         const renderer = rendererRef.current;
         const tScene = threeSceneRef.current;
         const cam = activeCamRef.current;
         if (!renderer || !tScene || !cam) return;
         rebuildCameraDependentEdges();
         renderer.render(tScene, cam);
-        updateProjectedLabels();
+        updateProjectedLabels(dt);
+      },
+      [rebuildCameraDependentEdges, updateProjectedLabels]
+    );
+
+    // Coalesced on-demand render
+    const requestRender = useCallback(() => {
+      if (renderQueuedRef.current) return;
+      renderQueuedRef.current = true;
+      renderRafRef.current = requestAnimationFrame(() => {
+        renderQueuedRef.current = false;
+        renderRafRef.current = null;
+        renderFrameNow(0.016);
       });
-    }, [rebuildCameraDependentEdges, updateProjectedLabels]);
+    }, [renderFrameNow]);
 
     // Rebuild static scene helpers (grid, axes, coordinate planes, working plane)
     const rebuildHelpers = useCallback(() => {
@@ -796,8 +894,12 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
               opacity: isSelected ? 0.28 : Math.min(0.24, pl.style.opacity ?? 0.16),
               side: THREE.DoubleSide,
               depthWrite: false,
+              polygonOffset: true,
+              polygonOffsetFactor: 2,
+              polygonOffsetUnits: 2,
             });
             const mesh = new THREE.Mesh(planeGeo, mat);
+            mesh.renderOrder = 0;
             mesh.userData = { geoId: id, kind: 'plane' };
             grp.add(mesh);
           }
@@ -810,6 +912,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
             opacity: isSelected ? 0.95 : 0.6,
           });
           const borderLine = new THREE.Line(borderGeo, borderMat);
+          borderLine.renderOrder = 1;
           borderLine.userData = { geoId: id, kind: 'plane' };
           grp.add(borderLine);
         } else if (obj.kind === 'polygon' || obj.kind === 'cross_section') {
@@ -822,8 +925,12 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
                 opacity: obj.kind === 'cross_section' ? (isSelected ? 0.45 : 0.34) : (obj.style.opacity ?? 0.26),
                 side: THREE.DoubleSide,
                 depthWrite: false,
+                polygonOffset: true,
+                polygonOffsetFactor: 1,
+                polygonOffsetUnits: 1,
               });
               const mesh = new THREE.Mesh(polyGeo, mat);
+              mesh.renderOrder = 0;
               mesh.userData = { geoId: id, kind: obj.kind };
               grp.add(mesh);
             }
@@ -833,6 +940,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
               color: obj.kind === 'cross_section' ? '#0284C7' : baseColor,
             });
             const edgeLine = new THREE.Line(edgeGeo, edgeMat);
+            edgeLine.renderOrder = 2;
             edgeLine.userData = { geoId: id, kind: obj.kind };
             grp.add(edgeLine);
           }
@@ -851,12 +959,13 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
           const cGeo = new THREE.BufferGeometry().setFromPoints(pts);
           const cMat = new THREE.LineBasicMaterial({ color: baseColor });
           const cLine = new THREE.Line(cGeo, cMat);
+          cLine.renderOrder = 2;
           cLine.userData = { geoId: id, kind: 'circle' };
           grp.add(cLine);
         } else if (obj.kind === 'solid') {
           const solid = obj as Geo3DSolid;
 
-          // Faces (for solids of revolution use smooth Three.js primitives; for polyhedra use exact vertices/faces)
+          // Faces (polygonOffset prevents Z-fighting with edges while keeping full depthTest)
           if (solid.style.showFaces !== false && !isWire) {
             const faceOpacity = isSGK ? Math.min(0.14, solid.style.opacity ?? 0.12) : (solid.style.opacity ?? 0.24);
             const mat = isSGK
@@ -866,6 +975,9 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
                   opacity: faceOpacity,
                   side: THREE.DoubleSide,
                   depthWrite: false,
+                  polygonOffset: true,
+                  polygonOffsetFactor: 1,
+                  polygonOffsetUnits: 1,
                 })
               : new THREE.MeshStandardMaterial({
                   color: baseColor,
@@ -875,6 +987,9 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
                   metalness: 0.05,
                   side: THREE.DoubleSide,
                   depthWrite: false,
+                  polygonOffset: true,
+                  polygonOffsetFactor: 1,
+                  polygonOffsetUnits: 1,
                 });
 
             const numParam = (k: string, fallback: number) => {
@@ -1127,9 +1242,18 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       controlsRef.current = controls;
 
       const onControlChange = () => {
+        if (suppressControlChangeRef.current) return;
         requestRender();
       };
+      const onControlStart = () => {
+        userInteractingRef.current = true;
+      };
+      const onControlEnd = () => {
+        userInteractingRef.current = false;
+      };
       controls.addEventListener('change', onControlChange);
+      controls.addEventListener('start', onControlStart);
+      controls.addEventListener('end', onControlEnd);
 
       // WebGL context lost / restored handlers
       const handleContextLost = (ev: Event) => {
@@ -1255,8 +1379,10 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
         }
         if (activeToolRef.current === 'point_free') {
           const pos = intersectWorkingPlane(ev);
+          hoverCoordRef.current = pos;
           setHoverCoord(pos);
-        } else if (hoverCoord !== null) {
+        } else if (hoverCoordRef.current !== null) {
+          hoverCoordRef.current = null;
           setHoverCoord(null);
         }
       };
@@ -1307,13 +1433,17 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       return () => {
         resizeObserver.disconnect();
         controls.removeEventListener('change', onControlChange);
+        controls.removeEventListener('start', onControlStart);
+        controls.removeEventListener('end', onControlEnd);
         controls.dispose();
         renderer.domElement.removeEventListener('pointerdown', onPointerDown);
         renderer.domElement.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
         renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
+        if (renderRafRef.current != null) cancelAnimationFrame(renderRafRef.current);
         if (rafLoopRef.current != null) cancelAnimationFrame(rafLoopRef.current);
+        if (softTimerRef.current != null) window.clearTimeout(softTimerRef.current);
         disposeObject3D(tScene);
         if (envTargetRef.current) envTargetRef.current.dispose();
         renderer.dispose();
@@ -1343,50 +1473,78 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       requestRender,
     ]);
 
-    // Auto-rotate loop (automatically pauses when constructing, dragging, or reducedMotion)
+    // Single synchronized auto-rotate loop (pauses during user orbit, point drag, label drag, or reducedMotion)
     useEffect(() => {
       if (!autoRotate || reducedMotion) return;
       if (activeTool !== 'select' && activeTool !== 'pan_orbit') return;
       let alive = true;
-      let lastTime = performance.now();
+      let lastTime = 0;
 
-      const step = (now: number) => {
+      const scheduleNext = () => {
         if (!alive) return;
-        const dt = Math.min(0.05, (now - lastTime) / 1000);
-        lastTime = now;
-
-        const cam = activeCamRef.current;
-        const ctrl = controlsRef.current;
-        if (cam && ctrl && !draggingPointIdRef.current) {
-          const offset = cam.position.clone().sub(ctrl.target);
-          const angle = dt * 0.45 * autoRotateSpeedRef.current;
-          const cosA = Math.cos(angle);
-          const sinA = Math.sin(angle);
-          const nx = offset.x * cosA - offset.y * sinA;
-          const ny = offset.x * sinA + offset.y * cosA;
-          offset.x = nx;
-          offset.y = ny;
-          cam.position.copy(ctrl.target).add(offset);
-          ctrl.update();
-          requestRender();
-        }
-
         if (isSoftwareGlRef.current) {
-          // Software WebGL pacing to keep UI responsive
-          window.setTimeout(() => {
+          softTimerRef.current = window.setTimeout(() => {
+            softTimerRef.current = null;
             if (alive) rafLoopRef.current = requestAnimationFrame(step);
-          }, 48);
+          }, 42);
         } else {
           rafLoopRef.current = requestAnimationFrame(step);
         }
       };
 
+      const step = (now: number) => {
+        if (!alive) return;
+        if (lastTime === 0) {
+          lastTime = now;
+          scheduleNext();
+          return;
+        }
+        const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
+        lastTime = now;
+
+        const cam = activeCamRef.current;
+        const ctrl = controlsRef.current;
+        const paused =
+          document.hidden ||
+          userInteractingRef.current ||
+          Boolean(draggingPointIdRef.current) ||
+          Boolean(draggingLabelRef.current);
+
+        if (cam && ctrl && !paused && dt > 0) {
+          _rotOffset.copy(cam.position).sub(ctrl.target);
+          const deltaAngle = dt * 0.45 * autoRotateSpeedRef.current;
+          const cosA = Math.cos(deltaAngle);
+          const sinA = Math.sin(deltaAngle);
+          const nx = _rotOffset.x * cosA - _rotOffset.y * sinA;
+          const ny = _rotOffset.x * sinA + _rotOffset.y * cosA;
+          _rotOffset.x = nx;
+          _rotOffset.y = ny;
+          cam.position.copy(ctrl.target).add(_rotOffset);
+
+          suppressControlChangeRef.current = true;
+          ctrl.update();
+          suppressControlChangeRef.current = false;
+
+          // Render WebGL + project labels in the EXACT same frame (zero double rAF hop!)
+          renderFrameNow(dt);
+        }
+
+        scheduleNext();
+      };
+
       rafLoopRef.current = requestAnimationFrame(step);
       return () => {
         alive = false;
-        if (rafLoopRef.current != null) cancelAnimationFrame(rafLoopRef.current);
+        if (rafLoopRef.current != null) {
+          cancelAnimationFrame(rafLoopRef.current);
+          rafLoopRef.current = null;
+        }
+        if (softTimerRef.current != null) {
+          window.clearTimeout(softTimerRef.current);
+          softTimerRef.current = null;
+        }
       };
-    }, [autoRotate, autoRotateSpeed, reducedMotion, activeTool, requestRender]);
+    }, [autoRotate, autoRotateSpeed, reducedMotion, activeTool, renderFrameNow]);
 
     // Imperative handle for toolbar actions
     useImperativeHandle(
@@ -1527,7 +1685,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
       );
     }
 
-    const effectiveFont = presentationMode ? Math.max(18, labelFontSize + 3) : labelFontSize;
+    const effectiveFont = presentationMode ? Math.max(18, labelFontSize + 3) : Math.max(15, labelFontSize);
 
     return (
       <div className="relative w-full h-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white select-none">
@@ -1543,35 +1701,63 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
           }`}
         />
 
-        {/* Smart Label Overlay + Leader Lines (zero backdrop-filter over WebGL!) */}
-        <svg className="pointer-events-none absolute inset-0 w-full h-full overflow-hidden">
-          {labels
-            .filter((l) => l.displaced)
-            .map((l) => (
-              <line
-                key={`ldr_${l.id}`}
-                x1={l.anchorX}
-                y1={l.anchorY}
-                x2={l.x}
-                y2={l.y}
-                stroke="#94A3B8"
-                strokeWidth="1.1"
-                strokeDasharray="3 2"
-              />
-            ))}
+        {/* Dedicated Screen-Space Leader Line Layer (updated directly via DOM refs in rAF) */}
+        <svg
+          className="pointer-events-none absolute inset-0 w-full h-full overflow-hidden z-10"
+          data-layer="label-leaders-3d"
+        >
+          {labelDefs.map((l) => (
+            <line
+              key={`ldr_${l.id}`}
+              ref={(el) => {
+                if (el) leaderElRefs.current.set(l.id, el);
+                else leaderElRefs.current.delete(l.id);
+              }}
+              visibility="hidden"
+              stroke="#94A3B8"
+              strokeWidth="1.15"
+              strokeDasharray="3 2"
+            />
+          ))}
         </svg>
 
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          {labels.map((l) => {
-            const isDraggable = !l.objectId.startsWith('_axis_') && Boolean(onLabelOffsetChange);
+        {/* Dedicated Screen-Space Label Overlay (zero backdrop-filter, zero per-frame React re-render) */}
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden z-10"
+          data-layer="labels-3d"
+        >
+          {labelDefs.map((l) => {
+            const isAxisOrVertex =
+              l.category === 'axis' ||
+              l.category === 'origin' ||
+              l.id.includes('_v_');
+            const isDraggable =
+              !l.objectId.startsWith('_axis_') &&
+              !l.id.includes('_v_') &&
+              Boolean(onLabelOffsetChange);
+            const isPlate =
+              l.category === 'coord' ||
+              l.category === 'measure' ||
+              l.category === 'formula' ||
+              l.category === 'plane';
             return (
               <div
                 key={l.id}
+                ref={(el) => {
+                  if (el) labelElRefs.current.set(l.id, el);
+                  else labelElRefs.current.delete(l.id);
+                }}
+                data-label-id={l.id}
+                data-label-text={l.text}
                 onPointerDown={(ev) => {
                   if (!isDraggable) return;
                   ev.stopPropagation();
                   const obj = scene.objects[l.objectId];
-                  const orig = obj?.style.labelOffset ?? { dx: 12, dy: -12 };
+                  const cur = latestResolvedRef.current.get(l.id);
+                  const orig = obj?.style.labelOffset ?? {
+                    dx: cur ? cur.x - cur.anchorX : 12,
+                    dy: cur ? cur.y - cur.anchorY : -12,
+                  };
                   draggingLabelRef.current = {
                     objectId: l.objectId,
                     startX: ev.clientX,
@@ -1581,14 +1767,23 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
                   };
                 }}
                 style={{
-                  left: `${l.x}px`,
-                  top: `${l.y}px`,
+                  left: 0,
+                  top: 0,
+                  visibility: 'hidden',
                   fontSize: `${effectiveFont}px`,
                   color: l.color,
-                  transform: 'translate(-50%, -50%)',
+                  fontStyle: l.category === 'axis' ? 'italic' : 'normal',
+                  textShadow: isPlate ? undefined : LABEL_HALO_SHADOW,
+                  willChange: 'transform',
                 }}
-                className={`absolute leading-none font-semibold px-1.5 py-0.5 rounded bg-white/92 border border-slate-200/80 shadow-xs whitespace-nowrap ${
-                  isDraggable ? 'pointer-events-auto cursor-move hover:border-teal-500' : ''
+                className={`absolute leading-none font-bold whitespace-nowrap ${
+                  isPlate
+                    ? 'px-1.5 py-0.5 rounded bg-white/95 border border-slate-200/85 shadow-xs font-semibold'
+                    : isAxisOrVertex
+                    ? 'px-0.5'
+                    : 'px-1 py-0.5 rounded bg-white/85'
+                } ${
+                  isDraggable ? 'pointer-events-auto cursor-move hover:ring-1 hover:ring-teal-500' : ''
                 }`}
                 title={isDraggable ? 'Kéo để di chuyển vị trí nhãn mà không làm đổi tọa độ 3D' : undefined}
               >
