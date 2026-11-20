@@ -23,8 +23,12 @@ import {
   Target,
   WifiOff,
 } from 'lucide-react';
+import { ALL_CHALLENGES, LEVELS } from '../challenges';
 import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
-import { getTemplate3DById } from '../geometry3d/templates3d';
+import { BADGE_DEFINITIONS } from '../data/ranksAndBadges';
+import { TEMPLATES_2D } from '../geometry/templates2d';
+import { ALL_CHALLENGES_3D, LEVELS_3D } from '../geometry3d/challenges3d';
+import { getTemplate3DById, TEMPLATES_3D } from '../geometry3d/templates3d';
 import { useApp } from '../store/AppContext';
 
 interface QuickTaskGuide {
@@ -77,8 +81,8 @@ const QUICK_TASK_GUIDES: QuickTaskGuide[] = [
     id: 'task-tools-3d',
     number: 3,
     title: 'Sử dụng công cụ 3D',
-    purpose: 'Tạo 18 hình khối chuẩn Toán 11–12, dựng mặt phẳng, thiết diện, hệ trục Oxyz và đo góc nhị diện.',
-    location: 'Phòng thực hành → thẻ "Dựng hình 3D" → thanh công cụ dọc 8 nhóm bên trái.',
+    purpose: 'Tạo các hình khối không gian chuẩn SGK Toán 11–12, dựng mặt phẳng, thiết diện, hệ trục Oxyz và đo góc nhị diện.',
+    location: 'Phòng thực hành → thẻ "Dựng hình 3D" → thanh công cụ dọc bên trái.',
     steps: [
       'Chọn Mặt phẳng làm việc (Oxy, Oxz hoặc Oyz) ngay đầu thanh công cụ bên trái trước khi chấm điểm tự do.',
       'Mở nhóm "Hình khối 3D" để chèn nhanh hình lập phương, hình chóp, lăng trụ, hình cầu, hình trụ hoặc hình nón.',
@@ -109,11 +113,11 @@ const QUICK_TASK_GUIDES: QuickTaskGuide[] = [
     id: 'task-open-template',
     number: 5,
     title: 'Mở hình mẫu',
-    purpose: 'Mở nhanh các hình mẫu minh họa sẵn (Đường thẳng Euler 2D và 40 hình mẫu Toán 11–12 3D) để dạy và học.',
+    purpose: `Mở nhanh ${TEMPLATES_2D.length} hình mẫu 2D (Toán 10 & mở rộng) và ${TEMPLATES_3D.length} hình mẫu 3D (Toán 11 – Toán 12) để dạy và học.`,
     location: 'Phòng thực hành → nút "Mở mẫu" trên thanh trên cùng hoặc thẻ "Thư viện hình mẫu".',
     steps: [
       'Nhấn nút "Mở mẫu" trên thanh trên cùng hoặc chuyển sang thẻ "Thư viện hình mẫu".',
-      'Lọc theo Không gian (2D / 3D), Lớp (Toán 11 / Toán 12) hoặc nhập từ khóa tìm kiếm.',
+      'Lọc theo Khối lớp (Tất cả / Toán 10 / Toán 11 / Toán 12), không gian (2D / 3D) hoặc nhập từ khóa tìm kiếm.',
       'Nhấp vào thẻ hình mẫu để mở trực tiếp trong không gian dựng hình tương ứng.',
       'Kéo các điểm tự do trên hình mẫu để quan sát các quan hệ hình học thay đổi động.',
     ],
@@ -125,12 +129,12 @@ const QUICK_TASK_GUIDES: QuickTaskGuide[] = [
     id: 'task-save-drawing',
     number: 6,
     title: 'Lưu bản vẽ',
-    purpose: 'Lưu trữ bản vẽ 2D và 3D ngay trên thiết bị, kèm ảnh thu nhỏ, tìm kiếm, nhân bản và xuất ảnh PNG/SVG.',
+    purpose: 'Lưu trữ bản vẽ 2D và 3D theo khối lớp THPT ngay trên thiết bị, kèm ảnh thu nhỏ, tìm kiếm, nhân bản và xuất ảnh PNG/SVG.',
     location: 'Thanh trên cùng Phòng thực hành → nút "Lưu bản vẽ" (phím tắt Ctrl+S) và thẻ "Bản vẽ của tôi".',
     steps: [
-      'Đặt tên bản vẽ rõ ràng bằng cách nhấp vào tiêu đề ở góc trên trái.',
+      'Đặt tên bản vẽ rõ ràng và chọn khối lớp THPT (Toán 10, Toán 11, Toán 12) ở góc trên trái.',
       'Nhấn nút "Lưu bản vẽ" (hoặc tổ hợp phím Ctrl+S) để lưu vào bộ nhớ thiết bị.',
-      'Mở thẻ "Bản vẽ của tôi" để xem lại toàn bộ bản vẽ 2D và 3D đã lưu, đổi tên trực tiếp hoặc nhân bản.',
+      'Mở thẻ "Bản vẽ của tôi" để xem lại toàn bộ bản vẽ 2D và 3D đã lưu, lọc theo lớp, đổi tên hoặc nhân bản.',
       'Nhấn "Xuất PNG" hoặc "Xuất SVG" khi cần chèn hình vẽ sắc nét vào bài giảng, phiếu học tập hoặc đề thi.',
     ],
     actionLabel: 'Xem Bản vẽ của tôi',
@@ -141,15 +145,15 @@ const QUICK_TASK_GUIDES: QuickTaskGuide[] = [
     id: 'task-challenges',
     number: 7,
     title: 'Thực hiện thử thách',
-    purpose: 'Rèn luyện kỹ năng dựng hình qua 180 thử thách 2D và 180 thử thách 3D (18 cấp độ, tối đa 540 sao mỗi hệ).',
-    location: 'Thanh điều hướng trên cùng → mục "Thử thách" → chọn Hình học 3D hoặc Hình học 2D.',
+    purpose: `Rèn luyện kỹ năng dựng hình qua ${ALL_CHALLENGES.length} thử thách 2D (${LEVELS.length} cấp) và ${ALL_CHALLENGES_3D.length} thử thách 3D (${LEVELS_3D.length} cấp) cho THPT 10–11–12.`,
+    location: 'Thanh điều hướng trên cùng → mục "Thử thách" → chọn khối lớp Toán 10, Toán 11 hoặc Toán 12.',
     steps: [
-      'Vào mục "Thử thách", chọn bộ lọc lớp (Tất cả / Toán 11 / Toán 12 với 3D) và chọn cấp độ muốn luyện.',
+      'Vào mục "Thử thách", chọn bộ lọc lớp (Tất cả / Toán 10 / Toán 11 / Toán 12) và chọn cấp độ muốn luyện.',
       'Đọc kỹ đề bài, giả thiết và sử dụng các công cụ được cung cấp để dựng đối tượng theo yêu cầu.',
       'Nhấn "Kiểm chứng" để hệ thống kiểm tra tính chính xác hình học động và chấm điểm 3 sao.',
       'Mức sao: 3 sao (đúng không cần gợi ý), 2 sao (đúng có dùng gợi ý), 1 sao (đúng sau khi xem lời giải).',
     ],
-    actionLabel: 'Mở Thử thách 3D',
+    actionLabel: 'Mở Thử thách THPT',
     actionTarget: 'campaign',
     campaignDim: '3d',
   },
@@ -216,9 +220,9 @@ const GUIDE_3D_GROUPS: Guide3DGroup[] = [
     number: 2,
     title: 'Tạo hình khối và chỉnh kích thước',
     summary:
-      'Chọn từ 18 hình khối chuẩn Toán 11–12 và thay đổi cạnh, chiều cao, bán kính theo thời gian thực.',
+      'Chọn hình khối không gian chuẩn SGK Toán 11–12 và thay đổi cạnh, chiều cao, bán kính theo thời gian thực.',
     steps: [
-      'Mở nhóm "Hình khối 3D" ở thanh công cụ bên trái và nhấn "Thư viện hình khối (18 khối)".',
+      'Mở nhóm "Hình khối 3D" ở thanh công cụ bên trái và nhấn "Thư viện hình khối 3D".',
       'Chọn khối cần tạo (hình chóp, lăng trụ, lập phương, hình cầu, hình trụ, hình nón...) và nhập kích thước ban đầu.',
       'Nhấp chọn hình khối để mở bảng Thuộc tính bên phải: kéo thanh trượt thay đổi a, b, h, r và bật/tắt mặt, cạnh, đỉnh, đường cao hoặc đường chéo.',
     ],
@@ -318,10 +322,10 @@ const GUIDE_GROUPS: GuideGroup[] = [
     summary:
       'Thanh điều hướng phía trên giúp bạn di chuyển nhanh giữa các khu vực học tập chính mà không cần đăng nhập.',
     steps: [
-      'Trang chủ: xem tổng quan tiến độ học tập, số sao đạt được và mở nhanh bài thử thách đang học dở.',
-      'Thử thách: hệ thống 18 cấp độ với 180 bài dựng hình sắp xếp từ cơ bản đến nâng cao và Olympic.',
-      'Phòng thực hành: bảng vẽ hình học tự do có đầy đủ công cụ để tự vẽ, đo đạc và khám phá.',
-      'Theo lớp · Đấu trường · Thư viện · Mở rộng: học theo khối lớp, tổ chức thi đua, tra cứu kiến thức và mở các tiện ích hỗ trợ.',
+      'Trang chủ: xem tổng quan lộ trình Toán 10 – 11 – 12, tiến độ học tập và mở nhanh bài thử thách tiếp theo.',
+      `Thử thách: hệ thống ${LEVELS.length} cấp độ 2D (${ALL_CHALLENGES.length} bài) và ${LEVELS_3D.length} cấp độ 3D (${ALL_CHALLENGES_3D.length} bài) sắp xếp theo lộ trình.`,
+      'Phòng thực hành: bảng vẽ hình học tự do 2D & 3D có đầy đủ công cụ để tự vẽ, đo đạc và khám phá.',
+      'Theo lớp · Đấu trường · Thư viện · Mở rộng: học theo khối lớp 10–11–12, tổ chức thi đua, tra cứu SGK và mở tiện ích giáo viên.',
     ],
     tip: 'Nếu cần xem lại nhanh các khu vực chính ngay trên màn hình, bạn có thể nhấn nút "Mở hướng dẫn tương tác" ở đầu trang.',
     illustration: 'interface',
@@ -395,7 +399,7 @@ const GUIDE_GROUPS: GuideGroup[] = [
       'Dùng công cụ Đường tròn vẽ đường tròn tâm A đi qua B, sau đó vẽ đường tròn tâm B đi qua A.',
       'Tạo giao điểm C của hai đường tròn rồi dùng công cụ Đoạn thẳng nối CA và CB để hoàn thành tam giác đều ABC.',
     ],
-    tip: 'Hoàn thành bài hiện tại với ít nhất 1 sao sẽ tự động mở khóa bài kế tiếp trong lộ trình 180 thử thách.',
+    tip: `Hoàn thành bài hiện tại với ít nhất 1 sao sẽ tự động mở khóa bài kế tiếp trong lộ trình ${ALL_CHALLENGES.length} thử thách 2D.`,
     illustration: 'first-challenge',
     actionLabel: 'Làm thử thách đầu tiên ngay',
     actionType: 'challenge',
@@ -462,10 +466,10 @@ const GUIDE_GROUPS: GuideGroup[] = [
     summary:
       'Giáo viên có thể trình chiếu bất kỳ bài học nào, tự tạo bài tập mới và tổ chức thi đấu trực tiếp ngay tại lớp học.',
     steps: [
-      'Vào "Mở rộng → Công cụ giáo viên" và bật "Chế độ Xem trước 180 bài" để mở ngay mọi thử thách phục vụ giảng dạy mà không ảnh hưởng tiến độ của học sinh.',
+      'Vào "Mở rộng → Công cụ giáo viên" và bật "Chế độ Xem trước" để mở ngay mọi thử thách 2D – 3D phục vụ giảng dạy mà không ảnh hưởng tiến độ học sinh.',
       'Bật "Chế độ trình chiếu" (cỡ chữ lớn) khi dạy trên tivi, máy chiếu hoặc màn hình lớn trong lớp.',
       'Dùng thẻ "Tạo thử thách mới" để tự biên soạn đề bài, chèn ký hiệu toán học, chọn công cụ cho phép và lưu sẵn cho học sinh thực hành.',
-      'Vào mục "Đấu trường" để chọn thể thức Thi đấu trong lớp học, Thi đấu theo đội hoặc 1v1 và bật màn hình bảng xếp hạng trực quan.',
+      'Vào mục "Đấu trường" để tổ chức thi đấu Tư duy THPT (Toán 10 – 11 – 12) hoặc Dựng hình 2D kèm mã QR và bảng xếp hạng LED.',
     ],
     tip: 'Mọi tính năng trong Công cụ giáo viên và Đấu trường hoạt động hoàn toàn miễn phí và chạy trực tiếp ngay trên trình duyệt.',
     illustration: 'classroom',
@@ -477,11 +481,10 @@ const GUIDE_GROUPS: GuideGroup[] = [
     id: 'guide-10',
     number: 10,
     title: 'Xem kết quả và thành tích',
-    summary:
-      'Theo dõi tiến độ hoàn thành 180 thử thách, tổng số sao trên thang 540 sao, huy hiệu đạt được và tải giấy chứng nhận.',
+    summary: `Theo dõi tiến độ hoàn thành theo từng khối lớp THPT, tổng số sao trên thang ${ALL_CHALLENGES.length * 3} sao, ${BADGE_DEFINITIONS.length} huy hiệu và giấy chứng nhận A4.`,
     steps: [
-      'Mở mục "Mở rộng → Thành tích học tập" để xem tổng số thử thách đã vượt qua, tỷ lệ hoàn thành từng cấp độ và danh hiệu hiện tại.',
-      'Theo dõi tiến độ mở khóa 12 huy hiệu tương ứng với từng kỹ năng như dựng hình cơ bản, tối ưu bước dựng, dựng hình bằng compa hay thước thẳng.',
+      'Mở mục "Mở rộng → Thành tích học tập" để xem tổng số thử thách đã vượt qua, tỷ lệ hoàn thành từng khối lớp 10–11–12 và danh hiệu hiện tại.',
+      `Theo dõi tiến độ mở khóa ${BADGE_DEFINITIONS.length} huy hiệu tương ứng với từng kỹ năng dựng hình và tư duy hình học.`,
       'Kéo xuống mục "Giấy chứng nhận thành tích" (hoặc chọn nhanh "Mở rộng → Giấy chứng nhận"), nhập họ tên học viên.',
       'Nhấn "Tải ảnh PNG (A4)" hoặc "In / Lưu PDF" để lưu lại giấy chứng nhận kết quả học tập.',
     ],
@@ -667,7 +670,7 @@ const GuideIllustration: React.FC<{ kind: GuideIllustrationId }> = ({ kind }) =>
           <line x1="108" y1="58" x2="108" y2="110" stroke="#FBBF24" strokeWidth="1.8" strokeDasharray="4 3" />
           <rect x="210" y="16" width="92" height="54" rx="8" fill="#FFFFFF" stroke="#CBD5E1" />
           <text x="256" y="40" textAnchor="middle" fontSize="10" fontWeight="700" fill="#0F766E">Xem trước</text>
-          <text x="256" y="56" textAnchor="middle" fontSize="10" fill="#475569">180 thử thách</text>
+          <text x="256" y="56" textAnchor="middle" fontSize="10" fill="#475569">Toàn bộ bài học</text>
           <rect x="210" y="80" width="92" height="54" rx="8" fill="#FFFBEB" stroke="#FDE68A" />
           <text x="256" y="104" textAnchor="middle" fontSize="10" fontWeight="700" fill="#B45309">Đấu trường</text>
           <text x="256" y="120" textAnchor="middle" fontSize="10" fill="#78350F">Nhóm · Lớp học</text>
@@ -677,7 +680,7 @@ const GuideIllustration: React.FC<{ kind: GuideIllustrationId }> = ({ kind }) =>
       return (
         <svg viewBox="0 0 320 150" className="w-full h-36 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700" aria-hidden="true">
           <rect x="18" y="20" width="130" height="110" rx="10" fill="#FFFFFF" stroke="#CBD5E1" />
-          <text x="32" y="44" fontSize="11" fontWeight="700" fill="#0F766E">Tổng sao: 360 / 540</text>
+          <text x="32" y="44" fontSize="11" fontWeight="700" fill="#0F766E">Tiến độ THPT</text>
           <rect x="32" y="54" width="102" height="8" rx="4" fill="#E2E8F0" />
           <rect x="32" y="54" width="68" height="8" rx="4" fill="#F59E0B" />
           <circle cx="48" cy="96" r="14" fill="#FEF3C7" stroke="#F59E0B" />
@@ -774,7 +777,7 @@ const QuickTaskIcon: React.FC<{ num: number }> = ({ num }) => {
 };
 
 export const GuidePage: React.FC = () => {
-  const { setPage, openChallenge, openLab3DWithScene, setTourOpen, setCampaignDimension } = useApp();
+  const { setPage, setLabSubView, openChallenge, openLab3DWithScene, setTourOpen, setCampaignDimension } = useApp();
   const [guideTab, setGuideTab] = useState<'quick' | '2d' | '3d'>('quick');
   const [selectedId, setSelectedId] = useState<string>('all');
 
@@ -802,10 +805,7 @@ export const GuidePage: React.FC = () => {
       return;
     }
     if (task.actionTarget === 'lab') {
-      if (task.labMode === '3d') {
-        setPage('lab');
-        return;
-      }
+      if (task.labMode) setLabSubView(task.labMode);
       setPage('lab');
       return;
     }

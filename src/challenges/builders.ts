@@ -280,6 +280,19 @@ export function makeChallenge(c: CompactChallengeInput): ChallengeDefinition {
         ? `L${String(c.levelId - 1).padStart(2, '0')}_C10`
         : null;
 
+  const normalizedGradeTags: GradeTag[] = Array.from(
+    new Set(
+      c.gradeTags.map((tag): GradeTag => {
+        if (tag === 'Lớp 6' || tag === 'Lớp 7' || tag === 'Lớp 8' || tag === 'Lớp 9') {
+          if (c.levelId === 8) return 'Lớp 11';
+          if (c.levelId >= 12) return c.levelId === 18 ? 'Olympic' : 'Học sinh giỏi';
+          return 'Lớp 10';
+        }
+        return tag;
+      })
+    )
+  );
+
   return {
     id,
     levelId: c.levelId,
@@ -287,7 +300,7 @@ export function makeChallenge(c: CompactChallengeInput): ChallengeDefinition {
     title: c.title,
     description: c.description,
     difficulty: c.difficulty,
-    gradeTags: c.gradeTags,
+    gradeTags: normalizedGradeTags,
     curriculumCategory: c.curriculumCategory,
     cognitiveLevel: c.cognitiveLevel,
     prerequisites: prevId ? [prevId] : [],

@@ -49,6 +49,8 @@ type GradeFilter = 'all' | 'Toán 11' | 'Toán 12';
 
 export const Campaign3DView: React.FC = () => {
   const {
+    activeGradeFilter,
+    setActiveGradeFilter,
     settings,
     active3DLevelId,
     setActive3DLevelId,
@@ -60,8 +62,20 @@ export const Campaign3DView: React.FC = () => {
     setCampaignDimension,
   } = useApp();
 
-  const [gradeFilter, setGradeFilter] = useState<GradeFilter>('all');
   const [viewingLevelId, setViewingLevelId] = useState<number | null>(null);
+
+  const gradeFilter: GradeFilter =
+    activeGradeFilter === '11'
+      ? 'Toán 11'
+      : activeGradeFilter === '12'
+      ? 'Toán 12'
+      : 'all';
+
+  const setGradeFilter = (next: GradeFilter) => {
+    if (next === 'Toán 11') setActiveGradeFilter('11');
+    else if (next === 'Toán 12') setActiveGradeFilter('12');
+    else setActiveGradeFilter('all');
+  };
 
   const activeChallenge = useMemo(
     () => (activeChallenge3DId ? getChallenge3DById(activeChallenge3DId) ?? null : null),
@@ -112,7 +126,7 @@ export const Campaign3DView: React.FC = () => {
             className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <ArrowLeft className="w-4 h-4" />
-            Tất cả 18 cấp độ
+            Tất cả {LEVELS_3D.length} cấp độ
           </button>
 
           {/* Quick jump between 18 levels */}
@@ -262,13 +276,13 @@ export const Campaign3DView: React.FC = () => {
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
               <Award className="w-4 h-4" />
-              18 Cấp độ · 180 Thử thách Hình học Không gian 3D &amp; Oxyz
+              {LEVELS_3D.length} Cấp độ · {ALL_CHALLENGES_3D.length} Thử thách Hình học Không gian 3D &amp; Oxyz
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-              Thử thách hình học
+              Thử thách Hình học Không gian 3D
             </h1>
             <p className="text-[15px] text-slate-600 dark:text-slate-300 max-w-2xl">
-              Thực hành dựng hình trực tiếp trong không gian 3D theo cấu trúc 18 cấp độ (Toán 11 và Toán 12).
+              Thực hành dựng hình trực tiếp trong không gian 3D theo cấu trúc {LEVELS_3D.length} cấp độ (Toán 11 và Toán 12).
               Đúng không dùng gợi ý: <strong>3 sao</strong> · Có dùng gợi ý: <strong>2 sao</strong> · Sau khi xem lời giải: <strong>1 sao</strong>.
             </p>
           </div>
@@ -315,7 +329,7 @@ export const Campaign3DView: React.FC = () => {
             ))}
           </div>
           <div className="text-sm text-slate-500 dark:text-slate-400">
-            Đang hiển thị {filteredLevels.length} cấp độ · Chọn một cấp độ để mở 10 thử thách
+            Đang hiển thị {filteredLevels.length} cấp độ · Chọn một cấp độ để mở các thử thách
           </div>
         </div>
       </div>

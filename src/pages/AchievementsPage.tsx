@@ -16,7 +16,9 @@ import {
   Target,
   Trophy,
 } from 'lucide-react';
+import { ALL_CHALLENGES, getChallengeProgramLabel } from '../challenges';
 import { BADGE_DEFINITIONS, RANK_TIERS } from '../data/ranksAndBadges';
+import { THPT_GRADE_META, THPT_GRADE_ORDER, type ThptGrade } from '../data/thptCurriculum';
 import { ALL_CHALLENGES_3D, calcProgressPercent, LEVELS_3D } from '../geometry3d/challenges3d';
 import { useApp } from '../store/AppContext';
 
@@ -130,7 +132,7 @@ function downloadCertificatePng(params: {
   const boxes = [
     { label: 'THỬ THÁCH HOÀN THÀNH', value: `${params.completedCount} / ${params.totalChallenges}` },
     { label: 'TỔNG SỐ SAO TỐI ƯU', value: `★ ${params.totalStars} / ${params.maxStars}` },
-    { label: 'HUY HIỆU CHINH PHỤC', value: `${params.unlockedBadges} / 12` },
+    { label: 'HUY HIỆU CHINH PHỤC', value: `${params.unlockedBadges} / ${BADGE_DEFINITIONS.length}` },
   ];
   boxes.forEach((b, idx) => {
     const bx = 260 + idx * 430;
@@ -203,6 +205,29 @@ export const AchievementsPage: React.FC = () => {
 
   const todayStr = new Date().toLocaleDateString('vi-VN');
 
+  const gradeProgressList = useMemo(() => {
+    return THPT_GRADE_ORDER.map((grade: ThptGrade) => {
+      const label = grade === '10' ? 'Toán 10' : grade === '11' ? 'Toán 11' : 'Toán 12';
+      const list2D = ALL_CHALLENGES.filter((c) => getChallengeProgramLabel(c) === label);
+      const list3D = ALL_CHALLENGES_3D.filter((c) => c.curriculumTag === label);
+      const done2D = list2D.filter((c) => (progressMap[c.id]?.stars ?? 0) >= 1).length;
+      const done3D = list3D.filter((c) => (progress3DMap[c.id]?.stars ?? 0) >= 1).length;
+      const stars2D = list2D.reduce((s, c) => s + (progressMap[c.id]?.stars ?? 0), 0);
+      const stars3D = list3D.reduce((s, c) => s + (progress3DMap[c.id]?.stars ?? 0), 0);
+      const total = list2D.length + list3D.length;
+      const done = done2D + done3D;
+      return {
+        grade,
+        meta: THPT_GRADE_META[grade],
+        done,
+        total,
+        stars: stars2D + stars3D,
+        maxStars: total * 3,
+        pct: calcProgressPercent(done, total),
+      };
+    });
+  }, [progressMap, progress3DMap]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-10">
       {/* Header */}
@@ -211,20 +236,54 @@ export const AchievementsPage: React.FC = () => {
           <Award className="w-8 h-8 text-amber-500" />
           Thành tích, Danh hiệu &amp; Giấy chứng nhận
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Mọi hạng danh hiệu và huy hiệu đều được tính tự động từ kết quả dựng hình thực tế vượt qua kiểm chứng kéo điểm.
+        <p className="text-[15px] text-slate-600 dark:text-slate-400">
+          Mọi hạng danh hiệu, huy hiệu và tiến độ theo khối lớp THPT đều được tính tự động từ kết quả thực hành và kiểm chứng thực tế.
         </p>
       </div>
+
+      {/* THPT Grade-by-Grade Progress Summary */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 no-print">
+        {gradeProgressList.map((g) => (
+          <div
+            key={g.grade}
+            className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${g.meta.badgeClass}`}>
+                {g.meta.label}
+              </span>
+              <span className="text-xs font-mono-tabular font-semibold text-amber-600 dark:text-amber-400">
+                ★ {g.stars}/{g.maxStars}
+              </span>
+            </div>
+            <div className="font-bold text-slate-900 dark:text-white text-base leading-snug">
+              {g.meta.title}
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-mono-tabular text-slate-600 dark:text-slate-300">
+                <span>Hoàn thành: {g.done}/{g.total} thử thách</span>
+                <span>{g.pct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${g.pct}%`, backgroundColor: g.meta.accentHex }}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
 
       {/* Rank Progression Card */}
       <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5 no-print">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-wide text-teal-700 dark:text-teal-400">
-              Hệ thống 8 hạng danh hiệu Học viện
+              Hệ thống {RANK_TIERS.length} hạng danh hiệu Học viện
             </div>
             <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">
-              Hạng {stats.rank.current.level}/8: {stats.rank.current.title}
+              Hạng {stats.rank.current.level}/{RANK_TIERS.length}: {stats.rank.current.title}
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
               {stats.rank.current.description}
@@ -287,7 +346,7 @@ export const AchievementsPage: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400">
-              Tiến độ Hình học Không gian 3D (Hệ thống riêng, không gộp vào 540 sao 2D)
+              Tiến độ Hình học Không gian 3D (Hệ thống riêng, không gộp vào {stats.maxStars} sao 2D)
             </div>
             <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">
               Chinh phục Không gian 3D &amp; Oxyz
@@ -349,7 +408,7 @@ export const AchievementsPage: React.FC = () => {
       <section className="space-y-4 no-print">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-            Bộ 12 Huy hiệu Chinh phục ({stats.unlockedBadgesCount}/12 đã mở)
+            Bộ {BADGE_DEFINITIONS.length} Huy hiệu Chinh phục ({stats.unlockedBadgesCount}/{BADGE_DEFINITIONS.length} đã mở)
           </h2>
         </div>
 
@@ -491,7 +550,7 @@ export const AchievementsPage: React.FC = () => {
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="text-xs font-semibold uppercase text-slate-500">Huy hiệu đạt được</div>
               <div className="text-2xl font-extrabold font-mono-tabular text-teal-700 mt-1">
-                {stats.unlockedBadgesCount} / 12
+                {stats.unlockedBadgesCount} / {BADGE_DEFINITIONS.length}
               </div>
             </div>
           </div>

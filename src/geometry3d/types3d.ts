@@ -430,6 +430,7 @@ export interface SavedDrawing3D {
   schemaVersion: 1;
   title: string;
   topic: string;
+  gradeTag?: '10' | '11' | '12';
   description?: string;
   scene: Geo3DScene;
   createdAt: string;

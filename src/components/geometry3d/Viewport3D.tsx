@@ -1670,7 +1670,7 @@ export const Viewport3D = forwardRef<Viewport3DHandle, Viewport3DProps>(
         <div className="w-full h-full min-h-[380px] rounded-2xl border border-amber-200 bg-amber-50/70 p-6 flex flex-col items-center justify-center text-center gap-3">
           <h3 className="text-lg font-bold text-slate-900">Trình duyệt chưa hỗ trợ WebGL 3D</h3>
           <p className="text-[15px] text-slate-600 max-w-md">
-            Bạn vẫn có thể sử dụng đầy đủ không gian Dựng hình phẳng 2D và hệ thống 180 thử thách hình học phẳng.
+            Bạn vẫn có thể sử dụng đầy đủ không gian Dựng hình phẳng 2D và hệ thống thử thách hình học phẳng.
           </p>
           {onFallback2D && (
             <button

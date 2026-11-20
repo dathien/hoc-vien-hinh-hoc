@@ -10,7 +10,7 @@ export const LEVELS: LevelMeta[] = [
       'Làm quen với thước thẳng không chia độ và compa qua các phép dựng hình nền tảng gắn với bộ Cơ sở (Elements) của nhà toán học Euclid.',
     accentColor: '#0F766E',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 6', 'Lớp 7'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'equilateral',
   },
   {
@@ -22,7 +22,7 @@ export const LEVELS: LevelMeta[] = [
       'Làm chủ kỹ thuật dựng đường trung trực, đường vuông góc tại điểm thuộc hoặc ngoài đường thẳng và các ứng dụng trong tam giác.',
     accentColor: '#0284C7',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 7', 'Lớp 8'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'perpendicular',
   },
   {
@@ -34,19 +34,19 @@ export const LEVELS: LevelMeta[] = [
       'Dựng chính xác các góc 15°, 30°, 45°, 60°, 90°, 120° cùng tia phân giác trong và tia phân giác ngoài của góc.',
     accentColor: '#7C3AED',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 6', 'Lớp 7'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'angle_bisector',
   },
   {
     id: 4,
     roman: 'IV',
     title: 'Đường thẳng song song và phép tịnh tiến',
-    subtitle: 'Tiên đề Euclid, hình bình hành và vectơ tịnh tiến',
+    subtitle: 'Đường song song, hình bình hành và quy tắc vectơ',
     description:
-      'Dựng đường thẳng song song, hình bình hành và thực hiện phép tịnh tiến hình học trên mặt phẳng.',
+      'Dựng đường thẳng song song, hình bình hành và thực hiện phép tịnh tiến theo vectơ trên mặt phẳng.',
     accentColor: '#0F766E',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 7', 'Lớp 8', 'Lớp 10'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'parallel',
   },
   {
@@ -58,7 +58,7 @@ export const LEVELS: LevelMeta[] = [
       'Dựng các tứ giác đặc biệt, tứ giác nội tiếp và bài toán biến đổi bảo toàn diện tích tam giác – tứ giác.',
     accentColor: '#D97706',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 8', 'Lớp 9'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'square',
   },
   {
@@ -67,10 +67,10 @@ export const LEVELS: LevelMeta[] = [
     title: 'Tam giác đặc biệt',
     subtitle: 'Dựng tam giác theo cạnh, góc và đường tròn nội, ngoại tiếp',
     description:
-      'Giải quyết hệ thống bài toán dựng tam giác theo các trường hợp bằng nhau và điều kiện góc đặc biệt.',
+      'Giải quyết hệ thống bài toán dựng tam giác theo cạnh, góc và các yếu tố đường tròn gắn với giải tam giác Toán 10.',
     accentColor: '#0284C7',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 7', 'Lớp 8'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'right_triangle',
   },
   {
@@ -79,10 +79,10 @@ export const LEVELS: LevelMeta[] = [
     title: 'Các điểm đặc biệt trong tam giác',
     subtitle: 'Trọng tâm, trực tâm, tâm ngoại tiếp, tâm nội tiếp và đường thẳng Euler',
     description:
-      'Khám phá các điểm đồng quy quan trọng trong tam giác và mở rộng sang đường thẳng Euler.',
+      'Khám phá các điểm đồng quy quan trọng trong tam giác gắn với hệ thức vectơ và tọa độ tam giác Toán 10.',
     accentColor: '#7C3AED',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 7', 'Lớp 9', 'Học sinh giỏi'],
+    gradeTags: ['Lớp 10', 'Học sinh giỏi'],
     thumbnailKind: 'euler_line',
   },
   {
@@ -91,22 +91,22 @@ export const LEVELS: LevelMeta[] = [
     title: 'Phép biến hình trong mặt phẳng',
     subtitle: 'Đối xứng trục, đối xứng tâm, phép quay, tịnh tiến và vị tự',
     description:
-      'Thực hành các phép dời hình và phép đồng dạng trên mặt phẳng gắn với chuyên đề phép biến hình.',
+      'Thực hành các phép dời hình và phép đồng dạng trên mặt phẳng gắn với Chuyên đề học tập Toán 11.',
     accentColor: '#0F766E',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 8', 'Lớp 11'],
+    gradeTags: ['Lớp 11'],
     thumbnailKind: 'symmetry',
   },
   {
     id: 9,
     roman: 'IX',
     title: 'Định lí Thalès và tỉ số đoạn thẳng',
-    subtitle: 'Chia đoạn tỉ lệ, tam giác đồng dạng, trung bình nhân và hàng điểm điều hòa',
+    subtitle: 'Chia đoạn tỉ lệ, tam giác đồng dạng, trung bình nhân và hệ thức tỉ lệ',
     description:
       'Vận dụng định lí Thalès và hệ thức lượng để chia đoạn thẳng theo tỉ số, dựng đoạn tỉ lệ và trung bình nhân.',
     accentColor: '#0284C7',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 8', 'Lớp 9', 'Lớp 10'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'thales',
   },
   {
@@ -115,10 +115,10 @@ export const LEVELS: LevelMeta[] = [
     title: 'Tỉ số vàng và hình học đối xứng',
     subtitle: 'Tỉ số vàng φ, ngũ giác đều, tam giác vàng và cấu hình đối xứng',
     description:
-      'Khám phá tỉ số vàng φ = (1 + √5)/2 trong ngũ giác đều, tam giác vàng và các bài toán dựng hình mở rộng.',
+      'Khám phá tỉ số vàng φ = (1 + √5)/2 trong ngũ giác đều, tam giác vàng và các bài toán dựng hình mở rộng THPT.',
     accentColor: '#D97706',
     curriculumCategory: 'Mở rộng',
-    gradeTags: ['Lớp 9', 'Lớp 10', 'Học sinh giỏi'],
+    gradeTags: ['Lớp 10', 'Học sinh giỏi'],
     thumbnailKind: 'golden',
   },
   {
@@ -127,10 +127,10 @@ export const LEVELS: LevelMeta[] = [
     title: 'Đường tròn và tiếp tuyến',
     subtitle: 'Tiếp tuyến, dây cung, xác định tâm và tiếp tuyến chung',
     description:
-      'Rèn luyện kỹ năng dựng tiếp tuyến tại điểm trên và ngoài đường tròn, tìm tâm đường tròn và dựng tiếp tuyến chung.',
+      'Rèn luyện kỹ năng dựng tiếp tuyến tại điểm trên và ngoài đường tròn, tìm tâm đường tròn và tiếp tuyến chung (Toán 10).',
     accentColor: '#0F766E',
     curriculumCategory: 'Chính khóa',
-    gradeTags: ['Lớp 9', 'Lớp 10'],
+    gradeTags: ['Lớp 10'],
     thumbnailKind: 'tangent',
   },
   {
@@ -154,7 +154,7 @@ export const LEVELS: LevelMeta[] = [
       'Thực hành dựng các đa giác đều nội tiếp đường tròn bằng thước thẳng và compa theo định lí Gauss–Wantzel.',
     accentColor: '#0284C7',
     curriculumCategory: 'Mở rộng',
-    gradeTags: ['Lớp 9', 'Học sinh giỏi'],
+    gradeTags: ['Học sinh giỏi'],
     thumbnailKind: 'polygon',
   },
   {
@@ -166,7 +166,7 @@ export const LEVELS: LevelMeta[] = [
       'Chuyên đề mở rộng về hệ thống đường tròn tiếp xúc trong hình vuông, tam giác và nửa đường tròn.',
     accentColor: '#D97706',
     curriculumCategory: 'Mở rộng',
-    gradeTags: ['Lớp 9', 'Học sinh giỏi'],
+    gradeTags: ['Học sinh giỏi'],
     thumbnailKind: 'sangaku',
   },
   {
@@ -199,7 +199,7 @@ export const LEVELS: LevelMeta[] = [
     title: 'Hình học chuyên sâu',
     subtitle: 'Đường tròn chín điểm, định lí Ceva, Menelaus và đường đối trung',
     description:
-      'Chinh phục các cấu hình kinh điển của hình học phẳng mở rộng và bồi dưỡng học sinh giỏi.',
+      'Chinh phục các cấu hình kinh điển của hình học phẳng mở rộng và bồi dưỡng học sinh giỏi THPT.',
     accentColor: '#0284C7',
     curriculumCategory: 'Học sinh giỏi',
     gradeTags: ['Học sinh giỏi', 'Olympic'],
@@ -211,7 +211,7 @@ export const LEVELS: LevelMeta[] = [
     title: 'Hình học Olympic',
     subtitle: 'Điểm Lemoine, Napoleon, Fermat–Torricelli, đường thẳng Simson, Nagel và Brocard',
     description:
-      '10 bài toán dựng hình phẳng nâng cao và Olympic có phép dựng khả thi, kiểm chứng hình học động và chứng minh chặt chẽ.',
+      'Chuyên đề dựng hình phẳng nâng cao và Olympic có phép dựng khả thi, kiểm chứng hình học động và chứng minh chặt chẽ.',
     accentColor: '#D97706',
     curriculumCategory: 'Olympic',
     gradeTags: ['Olympic'],

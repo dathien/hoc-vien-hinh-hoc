@@ -801,7 +801,7 @@ export const LEVELS_16_18: ChallengeDefinition[] = [
     ],
     proof: 'Vì $\\widehat{HBC} = 90^\\circ - C = \\widehat{HAC} = \\widehat{H\'BC}$, đường thẳng $BC$ là phân giác góc $\\widehat{HBH\'}$ đồng thời vuông góc $HH\'$, nên $H\'$ đối xứng $H$ qua $BC$.',
     thumbnailKind: 'circumcircle',
-    educationalNotes: 'Tính chất đối xứng trực tâm là một trong những bổ đề được dùng nhiều nhất trong đề thi HSG Lớp 9–10.',
+    educationalNotes: 'Tính chất đối xứng trực tâm là một trong những bổ đề được dùng nhiều nhất trong đề thi HSG Hình học THPT.',
   }),
 
   makeChallenge({
@@ -1187,7 +1187,7 @@ export const LEVELS_16_18: ChallengeDefinition[] = [
     levelId: 18,
     order: 10,
     title: 'Đỉnh cao Học Viện: Hợp nhất Đường tròn 9 điểm, Đường thẳng Euler và Điểm Lemoine',
-    description: 'Thử thách tổng hợp cuối cùng của Hành trình 180 thử thách! Cho tam giác $ABC$. Hãy dựng đồng thời **đường tròn 9 điểm Euler** và **đường thẳng Euler** của tam giác $ABC$.',
+    description: 'Thử thách tổng hợp cuối cùng của hệ thống thử thách dựng hình 2D! Cho tam giác $ABC$. Hãy dựng đồng thời **đường tròn 9 điểm Euler** và **đường thẳng Euler** của tam giác $ABC$.',
     difficulty: 'Olympic',
     gradeTags: ['Lớp 10', 'Học sinh giỏi', 'Olympic'],
     curriculumCategory: 'Olympic',
@@ -1220,6 +1220,6 @@ export const LEVELS_16_18: ChallengeDefinition[] = [
     ],
     proof: 'Tâm đường tròn 9 điểm $N$ là trung điểm $OH$ nằm ngay trên đường thẳng Euler $OH$, còn bán kính $NM = R/2$ đi qua đủ $9$ điểm kinh điển của tam giác.',
     thumbnailKind: 'olympic',
-    educationalNotes: 'Chúc mừng bạn đã chinh phục trọn vẹn 18 cấp độ và 180 thử thách của Học Viện Hình Học Smart!',
+    educationalNotes: 'Chúc mừng bạn đã chinh phục trọn vẹn hành trình thử thách dựng hình 2D của Học Viện Hình Học Smart!',
   }),
 ];

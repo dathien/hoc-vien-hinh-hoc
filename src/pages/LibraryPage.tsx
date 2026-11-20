@@ -1,43 +1,35 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BookOpen, History, Ruler } from 'lucide-react';
+import { ArrowRight, BookOpen, Box, Compass, History, Ruler } from 'lucide-react';
+import { ThptGradeFilterBar } from '../components/common/ThptGradeFilterBar';
 import { GeometryCanvas } from '../components/geometry/GeometryCanvas';
 import { GeoThumbnailSVG } from '../components/geometry/GeoThumbnailSVG';
+import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
 import { MathText } from '../components/math/MathText';
 import { HISTORY_CARDS, KNOWLEDGE_TOPICS, type KnowledgeTopic } from '../data/knowledge';
+import {
+  getLessonsByGrade,
+  getThptInventoryStats,
+  THPT_GRADE_META,
+  THPT_LESSONS,
+  type LessonContentCategory,
+  type ThptLesson,
+} from '../data/thptCurriculum';
 import { addGeoObject, createEmptyScene } from '../geometry/engine';
+import { getTemplate2DById } from '../geometry/templates2d';
 import type { GeoScene } from '../geometry/types';
+import { getTemplate3DById } from '../geometry3d/templates3d';
 import { useApp } from '../store/AppContext';
 import type { InitialGeoSpec } from '../validators/types';
 
-type LibrarySectionFilter =
-  | 'Tất cả'
-  | 'Khái niệm và định nghĩa'
-  | 'Tính chất hình học'
-  | 'Định lí và hệ quả'
-  | 'Phương pháp dựng hình'
-  | 'Ví dụ minh họa'
-  | 'Kiến thức mở rộng'
-  | 'Lịch sử Toán học';
+type LibraryTab = 'sgk' | 'topics' | 'history';
 
-const LIBRARY_SECTIONS: LibrarySectionFilter[] = [
+const LESSON_CATEGORIES: Array<'Tất cả' | LessonContentCategory> = [
   'Tất cả',
   'Khái niệm và định nghĩa',
   'Tính chất hình học',
   'Định lí và hệ quả',
   'Phương pháp dựng hình',
-  'Ví dụ minh họa',
-  'Kiến thức mở rộng',
-  'Lịch sử Toán học',
 ];
-
-function getTopicGroups(t: KnowledgeTopic): LibrarySectionFilter[] {
-  const groups: LibrarySectionFilter[] = ['Phương pháp dựng hình', 'Ví dụ minh họa'];
-  if ([1, 2, 3, 4].includes(t.levelId)) groups.push('Khái niệm và định nghĩa');
-  if ([2, 3, 5, 7, 8, 11].includes(t.levelId)) groups.push('Tính chất hình học');
-  if ([4, 6, 7, 9, 11, 13, 15, 16, 17].includes(t.levelId)) groups.push('Định lí và hệ quả');
-  if ([10, 12, 13, 14, 15, 16, 17, 18].includes(t.levelId)) groups.push('Kiến thức mở rộng');
-  return groups;
-}
 
 function buildInteractiveSceneFromSpecs(specs: InitialGeoSpec[]): GeoScene {
   let sc = createEmptyScene();
@@ -58,71 +50,365 @@ function buildInteractiveSceneFromSpecs(specs: InitialGeoSpec[]): GeoScene {
   return sc;
 }
 
+function buildLesson2DScene(lesson: ThptLesson): GeoScene {
+  const tpl = getTemplate2DById(lesson.templateId);
+  return tpl ? tpl.buildScene() : createEmptyScene();
+}
+
 export const LibraryPage: React.FC = () => {
-  const { openChallenge, openLabWithScene, settings } = useApp();
-  const [section, setSection] = useState<LibrarySectionFilter>('Tất cả');
+  const {
+    activeGradeFilter,
+    setActiveGradeFilter,
+    openChallenge,
+    openChallenge3D,
+    openLabWithScene,
+    openLab3DWithScene,
+    settings,
+  } = useApp();
+
+  const inventory = useMemo(() => getThptInventoryStats(), []);
+  const [tab, setTab] = useState<LibraryTab>('sgk');
+  const [categoryFilter, setCategoryFilter] = useState<'Tất cả' | LessonContentCategory>('Tất cả');
+  const [selectedLessonId, setSelectedLessonId] = useState<string>(THPT_LESSONS[0].id);
   const [selectedTopicId, setSelectedTopicId] = useState<string>(KNOWLEDGE_TOPICS[0].id);
 
-  const visibleTopics = useMemo(() => {
-    if (section === 'Tất cả' || section === 'Lịch sử Toán học') return KNOWLEDGE_TOPICS;
-    return KNOWLEDGE_TOPICS.filter((t) => getTopicGroups(t).includes(section));
-  }, [section]);
+  // Filtered SGK THPT lessons
+  const visibleLessons = useMemo(() => {
+    const byGrade = getLessonsByGrade(activeGradeFilter);
+    if (categoryFilter === 'Tất cả') return byGrade;
+    return byGrade.filter((l) => l.categories.includes(categoryFilter));
+  }, [activeGradeFilter, categoryFilter]);
 
-  const selectedTopic = useMemo(() => {
-    return visibleTopics.find((t) => t.id === selectedTopicId) ?? visibleTopics[0] ?? KNOWLEDGE_TOPICS[0];
-  }, [visibleTopics, selectedTopicId]);
+  const selectedLesson = useMemo(() => {
+    return visibleLessons.find((l) => l.id === selectedLessonId) ?? visibleLessons[0] ?? THPT_LESSONS[0];
+  }, [visibleLessons, selectedLessonId]);
 
-  const [demoScene, setDemoScene] = useState<GeoScene>(() =>
+  const [lesson2DScene, setLesson2DScene] = useState<GeoScene>(() =>
+    selectedLesson.dimension === '2d' ? buildLesson2DScene(selectedLesson) : createEmptyScene()
+  );
+
+  useEffect(() => {
+    if (selectedLesson.dimension === '2d') {
+      setLesson2DScene(buildLesson2DScene(selectedLesson));
+    }
+  }, [selectedLesson]);
+
+  const lesson3DScene = useMemo(() => {
+    if (selectedLesson.dimension !== '3d') return undefined;
+    return getTemplate3DById(selectedLesson.templateId)?.buildScene();
+  }, [selectedLesson]);
+
+  // Filtered extension topics
+  const selectedTopic: KnowledgeTopic = useMemo(() => {
+    return KNOWLEDGE_TOPICS.find((t) => t.id === selectedTopicId) ?? KNOWLEDGE_TOPICS[0];
+  }, [selectedTopicId]);
+
+  const [topicDemoScene, setTopicDemoScene] = useState<GeoScene>(() =>
     buildInteractiveSceneFromSpecs(selectedTopic.interactiveSpecs)
   );
 
   useEffect(() => {
-    setDemoScene(buildInteractiveSceneFromSpecs(selectedTopic.interactiveSpecs));
+    setTopicDemoScene(buildInteractiveSceneFromSpecs(selectedTopic.interactiveSpecs));
   }, [selectedTopic]);
+
+  const gradeCounts = useMemo(
+    () => ({
+      all: inventory.totals.lessons,
+      '10': inventory.byGrade['10'].lessonsCount,
+      '11': inventory.byGrade['11'].lessonsCount,
+      '12': inventory.byGrade['12'].lessonsCount,
+    }),
+    [inventory]
+  );
+
+  const handleOpenLessonInLab = (lesson: ThptLesson) => {
+    if (lesson.dimension === '2d') {
+      openLabWithScene(lesson2DScene, `Toán ${lesson.grade} · ${lesson.title}`);
+    } else if (lesson3DScene) {
+      openLab3DWithScene(lesson3DScene, `Toán ${lesson.grade} · ${lesson.title}`);
+    }
+  };
+
+  const handleOpenLessonChallenge = (lesson: ThptLesson) => {
+    if (lesson.dimension === '2d') {
+      openChallenge(lesson.challengeId);
+    } else {
+      openChallenge3D(lesson.challengeId);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <div className="space-y-1.5">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
           <BookOpen className="w-7 h-7 text-sky-600" />
-          Thư viện Kiến thức Hình học
+          Thư viện Kiến thức Hình học THPT
         </h1>
         <p className="text-[15px] text-slate-600 dark:text-slate-400 leading-relaxed">
-          Hệ thống 18 chuyên đề hình học động tương tác trực tiếp kèm phát biểu định lí, điều kiện áp dụng, phương pháp dựng hình, chứng minh và lịch sử Toán học.
+          Hệ thống {inventory.totals.lessons} bài học bám sát SGK Kết nối tri thức với cuộc sống (Toán 10, Toán 11, Toán 12), cùng {KNOWLEDGE_TOPICS.length} chuyên đề dựng hình mở rộng và {HISTORY_CARDS.length} chân dung lịch sử Toán học.
         </p>
       </div>
 
-      {/* 7 Structured Content Categories + All */}
-      <div className="flex flex-wrap gap-2">
-        {LIBRARY_SECTIONS.map((sec) => {
-          const active = section === sec;
-          return (
-            <button
-              key={sec}
-              type="button"
-              onClick={() => setSection(sec)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[15px] font-semibold border transition-colors ${
-                active
-                  ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
-              }`}
-            >
-              {sec === 'Lịch sử Toán học' && <History className="w-4 h-4" />}
-              {sec}
-            </button>
-          );
-        })}
+      {/* Top View Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <button
+          type="button"
+          onClick={() => setTab('sgk')}
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[15px] font-semibold border transition-colors ${
+            tab === 'sgk'
+              ? 'bg-teal-700 text-white border-teal-700'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Bài học SGK THPT ({inventory.totals.lessons})
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('topics')}
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[15px] font-semibold border transition-colors ${
+            tab === 'topics'
+              ? 'bg-teal-700 text-white border-teal-700'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
+          }`}
+        >
+          <Compass className="w-4 h-4" />
+          Chuyên đề dựng hình mở rộng ({KNOWLEDGE_TOPICS.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('history')}
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[15px] font-semibold border transition-colors ${
+            tab === 'history'
+              ? 'bg-teal-700 text-white border-teal-700'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Lịch sử Toán học ({HISTORY_CARDS.length})
+        </button>
       </div>
 
-      {section !== 'Lịch sử Toán học' ? (
+      {/* TAB 1: Official SGK KNTT THPT 10-11-12 Lessons */}
+      {tab === 'sgk' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <ThptGradeFilterBar
+              value={activeGradeFilter}
+              onChange={setActiveGradeFilter}
+              counts={gradeCounts}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {LESSON_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    categoryFilter === cat
+                      ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Lesson Index */}
+            <div className="lg:col-span-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 font-bold text-[15px] text-slate-800 dark:text-slate-100">
+                Danh mục bài học ({visibleLessons.length})
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[760px] overflow-y-auto">
+                {visibleLessons.map((lesson) => {
+                  const active = lesson.id === selectedLesson.id;
+                  const meta = THPT_GRADE_META[lesson.grade];
+                  return (
+                    <button
+                      key={lesson.id}
+                      type="button"
+                      onClick={() => setSelectedLessonId(lesson.id)}
+                      className={`w-full text-left px-4 py-3 transition-colors ${
+                        active
+                          ? 'bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+                        <span style={{ color: meta.accentHex }}>{meta.label} · Bài {lesson.lessonNumber}</span>
+                        <span className="text-slate-400 uppercase">{lesson.dimension}</span>
+                      </div>
+                      <div className="font-bold text-[15px] mt-0.5 leading-snug">{lesson.title}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                        {lesson.chapterTitle}
+                      </div>
+                    </button>
+                  );
+                })}
+                {visibleLessons.length === 0 && (
+                  <div className="p-6 text-center text-sm text-slate-500">
+                    Không có bài học khớp bộ lọc hiện tại.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Interactive Lesson Panel */}
+            <div className="lg:col-span-8 space-y-5">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wide">
+                      <span className={`px-2.5 py-0.5 rounded-md border ${THPT_GRADE_META[selectedLesson.grade].badgeClass}`}>
+                        {THPT_GRADE_META[selectedLesson.grade].label}
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {selectedLesson.chapterTitle}
+                      </span>
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                      Bài {selectedLesson.lessonNumber}. {selectedLesson.title}
+                    </h2>
+                    <p className="text-[15px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                      <MathText text={selectedLesson.summary} />
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenLessonInLab(selectedLesson)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    >
+                      {selectedLesson.dimension === '2d' ? (
+                        <Ruler className="w-4 h-4 text-teal-600" />
+                      ) : (
+                        <Box className="w-4 h-4 text-sky-600" />
+                      )}
+                      Mở trong Phòng thực hành {selectedLesson.dimension.toUpperCase()}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenLessonChallenge(selectedLesson)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-700 text-white text-[15px] font-semibold hover:bg-teal-800"
+                    >
+                      Thử thách liên quan
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Interactive Diagram (2D Canvas or 3D Projection Preview) */}
+                <div className="space-y-2">
+                  {selectedLesson.dimension === '2d' ? (
+                    <GeometryCanvas
+                      scene={lesson2DScene}
+                      onSceneChange={(next) => setLesson2DScene(next)}
+                      interactiveDragOnly
+                      compactToolbar
+                      heightClass="h-[340px]"
+                      darkTheme={settings.theme === 'dark'}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-sky-200/80 dark:border-sky-800/70 bg-slate-50/90 dark:bg-slate-950/90 p-4 flex flex-col items-center justify-center gap-3">
+                      <div className="w-full h-[290px] flex items-center justify-center">
+                        <LiveGeo3DPreview
+                          scene={lesson3DScene}
+                          variant="hero_pyramid"
+                          width={520}
+                          height={280}
+                          animate={false}
+                          reducedMotion={settings.reducedMotion}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLessonInLab(selectedLesson)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-700 text-white text-sm font-semibold hover:bg-sky-800"
+                      >
+                        <Box className="w-4 h-4" />
+                        Xoay &amp; tương tác toàn màn hình trong Phòng thực hành 3D
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    <strong>Hình minh họa tương tác:</strong> {selectedLesson.interactiveNote}
+                  </p>
+                </div>
+
+                {/* Key Formulas */}
+                {selectedLesson.keyFormulas.length > 0 && (
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                      Công thức &amp; hệ thức trọng tâm
+                    </div>
+                    <ul className="space-y-1.5 text-[15px] text-slate-800 dark:text-slate-100">
+                      {selectedLesson.keyFormulas.map((f, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <span className="text-teal-600 font-bold">•</span>
+                          <MathText text={f} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Structured Academic Content */}
+                <div className="space-y-4 text-[15px] sm:text-base text-slate-700 dark:text-slate-200 leading-relaxed">
+                  <div className="rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/70 p-4">
+                    <div className="text-xs font-bold uppercase tracking-wide text-teal-800 dark:text-teal-300 mb-1">
+                      Nội dung kiến thức &amp; Phát biểu chính xác
+                    </div>
+                    <MathText text={selectedLesson.theorem} />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[15px]">
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
+                      <div className="font-bold text-slate-900 dark:text-white mb-1">
+                        Điều kiện áp dụng (Giả thiết)
+                      </div>
+                      <MathText text={selectedLesson.hypothesis} />
+                    </div>
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
+                      <div className="font-bold text-slate-900 dark:text-white mb-1">
+                        Kết luận hình học
+                      </div>
+                      <MathText text={selectedLesson.conclusion} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="font-bold text-slate-900 dark:text-white">
+                      Phương pháp thực hành &amp; lập luận
+                    </h3>
+                    <p className="leading-relaxed">
+                      <MathText text={selectedLesson.method} />
+                    </p>
+                  </div>
+
+                  <div className="text-[15px] text-amber-900 dark:text-amber-300 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 rounded-xl p-3.5">
+                    <strong>Ví dụ minh họa: </strong>
+                    <MathText text={selectedLesson.example} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: Extension 2D Construction Topics */}
+      {tab === 'topics' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left topic index */}
           <div className="lg:col-span-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 font-bold text-[15px] text-slate-800 dark:text-slate-100">
-              Danh mục chuyên đề ({visibleTopics.length})
+              Chuyên đề dựng hình mở rộng ({KNOWLEDGE_TOPICS.length})
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[700px] overflow-y-auto">
-              {visibleTopics.map((t) => {
+              {KNOWLEDGE_TOPICS.map((t) => {
                 const active = t.id === selectedTopic.id;
                 return (
                   <button
@@ -145,13 +431,12 @@ export const LibraryPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right interactive theorem & live diagram */}
           <div className="lg:col-span-8 space-y-5">
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-teal-700 dark:text-teal-400">
-                    Chuyên đề {selectedTopic.levelId}/18 · {selectedTopic.curriculumCategory}
+                    Chuyên đề {selectedTopic.levelId}/{KNOWLEDGE_TOPICS.length} · {selectedTopic.curriculumCategory}
                   </div>
                   <h2 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
                     {selectedTopic.title}
@@ -164,11 +449,11 @@ export const LibraryPage: React.FC = () => {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => openLabWithScene(demoScene, selectedTopic.title)}
+                    onClick={() => openLabWithScene(topicDemoScene, selectedTopic.title)}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     <Ruler className="w-4 h-4 text-sky-600" />
-                    Mở trong Phòng thực hành
+                    Mở trong Phòng thực hành 2D
                   </button>
                   <button
                     type="button"
@@ -181,11 +466,10 @@ export const LibraryPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Live Draggable Dynamic Diagram */}
               <div className="space-y-2">
                 <GeometryCanvas
-                  scene={demoScene}
-                  onSceneChange={(next) => setDemoScene(next)}
+                  scene={topicDemoScene}
+                  onSceneChange={(next) => setTopicDemoScene(next)}
                   interactiveDragOnly
                   compactToolbar
                   heightClass="h-[340px]"
@@ -196,7 +480,6 @@ export const LibraryPage: React.FC = () => {
                 </p>
               </div>
 
-              {/* Structured Academic Content */}
               <div className="space-y-4 text-[15px] sm:text-base text-slate-700 dark:text-slate-200 leading-relaxed">
                 <div className="rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/70 p-4">
                   <div className="text-xs font-bold uppercase tracking-wide text-teal-800 dark:text-teal-300 mb-1">
@@ -238,8 +521,10 @@ export const LibraryPage: React.FC = () => {
             </div>
           </div>
         </div>
-      ) : (
-        /* Historical Mathematicians & Sangaku Cards */
+      )}
+
+      {/* TAB 3: History of Geometry */}
+      {tab === 'history' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {HISTORY_CARDS.map((card) => (
             <article

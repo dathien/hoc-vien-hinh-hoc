@@ -2563,7 +2563,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
               <div className="flex items-center gap-2">
                 <Box className="w-5 h-5 text-teal-700" />
                 <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Thư viện 18 hình khối 3D
+                  Thư viện {SOLID_CATALOG.length} hình khối 3D
                 </h3>
               </div>
               <button

@@ -21,11 +21,17 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
+import { ThptGradeFilterBar } from '../components/common/ThptGradeFilterBar';
 import { GeometryCanvas } from '../components/geometry/GeometryCanvas';
 import { ObjectPropertiesPanel2D } from '../components/geometry/ObjectPropertiesPanel2D';
 import { SmartInstructionBar } from '../components/geometry/SmartInstructionBar';
 import { VerticalToolSidebar2D } from '../components/geometry/VerticalToolSidebar2D';
 import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
+import {
+  template2DMatchesGrade,
+  template3DMatchesGrade,
+  type ThptGrade,
+} from '../data/thptCurriculum';
 import {
   cloneScene,
   createEmptyScene,
@@ -174,6 +180,8 @@ const SceneThumbnail2D: React.FC<{ scene: GeoScene }> = ({ scene }) => {
 export const LabPage: React.FC = () => {
   const {
     setPage,
+    activeGradeFilter,
+    setActiveGradeFilter,
     settings,
     labSubView,
     setLabSubView,
@@ -203,6 +211,7 @@ export const LabPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawingId, setDrawingId] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(labInitialTitle ?? 'Bản vẽ 2D mới');
+  const [drawingGradeTag, setDrawingGradeTag] = useState<ThptGrade>('10');
   const [isDirty, setIsDirty] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const [confirmNewOpen, setConfirmNewOpen] = useState(false);
@@ -295,6 +304,7 @@ export const LabPage: React.FC = () => {
       id,
       title: cleanTitle,
       scene,
+      gradeTag: drawingGradeTag,
       createdAt: drawingId
         ? drawings.find((d) => d.id === drawingId)?.createdAt ?? now
         : now,
@@ -307,10 +317,10 @@ export const LabPage: React.FC = () => {
       type: 'lab',
       refId: id,
       title: cleanTitle,
-      detail: `Lưu bản vẽ 2D (${scene.order.length} đối tượng)`,
+      detail: `Lưu bản vẽ 2D · Toán ${drawingGradeTag} (${scene.order.length} đối tượng)`,
     });
     window.setTimeout(() => setSaveFeedback(null), 2400);
-  }, [drawingId, title, saveDrawing, scene, drawings, logStudyEvent]);
+  }, [drawingId, title, drawingGradeTag, saveDrawing, scene, drawings, logStudyEvent]);
 
   const createBlank2DDrawing = () => {
     setScene(createEmptyScene());
@@ -413,24 +423,26 @@ export const LabPage: React.FC = () => {
     const q = tplQuery.trim().toLowerCase();
     return TEMPLATES_2D.filter(
       (t) =>
-        !q ||
-        t.title.toLowerCase().includes(q) ||
-        t.summary.toLowerCase().includes(q) ||
-        t.topic.toLowerCase().includes(q)
+        template2DMatchesGrade(t.curriculumTag, activeGradeFilter) &&
+        (!q ||
+          t.title.toLowerCase().includes(q) ||
+          t.summary.toLowerCase().includes(q) ||
+          t.topic.toLowerCase().includes(q))
     );
-  }, [tplDimFilter, tplQuery]);
+  }, [tplDimFilter, tplQuery, activeGradeFilter]);
 
   const filteredTemplates3D = useMemo(() => {
     if (tplDimFilter === '2d') return [];
     const q = tplQuery.trim().toLowerCase();
     return TEMPLATES_3D.filter((t) => {
+      if (!template3DMatchesGrade(t.curriculumTag, activeGradeFilter)) return false;
       if (tplGroup !== 'all' && t.group !== tplGroup) return false;
       if (q && !t.title.toLowerCase().includes(q) && !t.summary.toLowerCase().includes(q)) {
         return false;
       }
       return true;
     });
-  }, [tplDimFilter, tplGroup, tplQuery]);
+  }, [tplDimFilter, tplGroup, tplQuery, activeGradeFilter]);
 
   const totalTemplatesCount = TEMPLATES_2D.length + TEMPLATES_3D.length;
   const totalSavedCount = drawings.length + drawings3D.length;
@@ -510,13 +522,13 @@ export const LabPage: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
-                    Hình học phẳng 2D · Thước &amp; Compa động
+                    Hình học phẳng 2D &amp; Tọa độ Oxy · Toán 10
                   </span>
                   <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
                     Dựng hình phẳng 2D
                   </h2>
                   <p className="text-[15px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Giao diện 4 vùng gọn gàng với 8 nhóm công cụ dọc, bảng vẽ trắng rộng rãi, thanh hướng dẫn một dòng và bảng thuộc tính theo ngữ cảnh.
+                    Giao diện 4 vùng gọn gàng với nhóm công cụ dựng hình động, hệ thức lượng tam giác, vectơ, tọa độ Oxy và ba đường conic.
                   </p>
                 </div>
               </div>
@@ -532,12 +544,13 @@ export const LabPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
+                    setActiveGradeFilter('10');
                     setTplDimFilter('2d');
                     setLabSubView('templates');
                   }}
                   className="px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
-                  Xem hình mẫu 2D
+                  Xem {TEMPLATES_2D.length} hình mẫu 2D
                 </button>
               </div>
             </div>
@@ -562,7 +575,7 @@ export const LabPage: React.FC = () => {
                     Dựng hình không gian 3D
                   </h2>
                   <p className="text-[15px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Thư viện 18 hình khối, 4 chế độ hiển thị (nét khuất chuẩn SGK, hình khối, khung dây, Oxyz), thiết diện động, đo góc – khoảng cách và trình chiếu lớp học.
+                    Thư viện hình khối không gian chuẩn SGK, 4 chế độ hiển thị (nét khuất chuẩn SGK, hình khối, khung dây, Oxyz), thiết diện động, đo góc – khoảng cách và trình chiếu lớp học.
                   </p>
                 </div>
               </div>
@@ -583,7 +596,7 @@ export const LabPage: React.FC = () => {
                   }}
                   className="px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
-                  Khám phá 40 hình mẫu 3D
+                  Khám phá {TEMPLATES_3D.length} hình mẫu 3D
                 </button>
               </div>
             </div>
@@ -601,7 +614,7 @@ export const LabPage: React.FC = () => {
         >
           {/* ZONE 1: Compact Top Drawing Manager Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-            <div className="flex items-center gap-2 min-w-[200px] flex-1 max-w-md">
+            <div className="flex items-center gap-2 min-w-[200px] flex-1 max-w-lg">
               <input
                 type="text"
                 value={title}
@@ -612,6 +625,16 @@ export const LabPage: React.FC = () => {
                 aria-label="Tên bản vẽ 2D"
                 className="w-full rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-teal-600 focus:bg-slate-50 dark:focus:bg-slate-800 px-2.5 py-1.5 text-[16px] font-bold text-slate-900 dark:text-white bg-transparent focus:outline-none"
               />
+              <select
+                aria-label="Khối lớp bản vẽ 2D"
+                value={drawingGradeTag}
+                onChange={(e) => setDrawingGradeTag(e.target.value as ThptGrade)}
+                className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200"
+              >
+                <option value="10">Toán 10</option>
+                <option value="11">Toán 11</option>
+                <option value="12">Toán 12</option>
+              </select>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
@@ -896,6 +919,23 @@ export const LabPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Unified THPT Grade Filter Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <ThptGradeFilterBar
+              value={activeGradeFilter}
+              onChange={(next) => {
+                setActiveGradeFilter(next);
+                if (next === '10') setTplDimFilter('2d');
+                else if (next === '11' || next === '12') setTplDimFilter('3d');
+                else setTplDimFilter('all');
+              }}
+              size="sm"
+            />
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              Hiển thị <strong>{filteredTemplates2D.length + filteredTemplates3D.length}</strong> / {totalTemplatesCount} hình mẫu
+            </span>
+          </div>
+
           {/* 2D / 3D Dimension Filter + 3D Topic Sub-filters */}
           <div className="flex flex-wrap items-center gap-2">
             {(
@@ -1077,6 +1117,12 @@ export const LabPage: React.FC = () => {
             </div>
           </div>
 
+          <ThptGradeFilterBar
+            value={activeGradeFilter}
+            onChange={setActiveGradeFilter}
+            size="sm"
+          />
+
           {totalSavedCount === 0 ? (
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center space-y-3">
               <p className="text-[15px] text-slate-500">
@@ -1095,8 +1141,14 @@ export const LabPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {(savedFilter === 'all' || savedFilter === '3d') &&
                 drawings3D
-                  .filter((d) => !savedQuery.trim() || d.title.toLowerCase().includes(savedQuery.toLowerCase()))
-                  .map((d) => (
+                  .filter((d) => {
+                    const inferredGrade = d.gradeTag ?? (d.scene.displayMode === 'oxyz' ? '12' : '11');
+                    if (activeGradeFilter !== 'all' && inferredGrade !== activeGradeFilter) return false;
+                    return !savedQuery.trim() || d.title.toLowerCase().includes(savedQuery.toLowerCase());
+                  })
+                  .map((d) => {
+                    const inferredGrade = d.gradeTag ?? (d.scene.displayMode === 'oxyz' ? '12' : '11');
+                    return (
                     <div
                       key={d.id}
                       className="rounded-2xl border border-sky-200 dark:border-sky-800/70 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between gap-3"
@@ -1106,7 +1158,7 @@ export const LabPage: React.FC = () => {
                           <LiveGeo3DPreview scene={d.scene} width={280} height={150} animate={false} reducedMotion={true} />
                         </div>
                         <div className="flex items-center justify-between text-xs font-bold text-sky-700 dark:text-sky-400">
-                          <span>Bản vẽ 3D</span>
+                          <span>Bản vẽ 3D · Toán {inferredGrade}</span>
                           <span className="text-slate-400 font-normal">
                             {new Date(d.updatedAt).toLocaleDateString('vi-VN')}
                           </span>
@@ -1225,12 +1277,19 @@ export const LabPage: React.FC = () => {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
 
               {(savedFilter === 'all' || savedFilter === '2d') &&
                 drawings
-                  .filter((d) => !savedQuery.trim() || d.title.toLowerCase().includes(savedQuery.toLowerCase()))
-                  .map((d) => (
+                  .filter((d) => {
+                    const inferredGrade = d.gradeTag ?? '10';
+                    if (activeGradeFilter !== 'all' && inferredGrade !== activeGradeFilter) return false;
+                    return !savedQuery.trim() || d.title.toLowerCase().includes(savedQuery.toLowerCase());
+                  })
+                  .map((d) => {
+                    const inferredGrade = d.gradeTag ?? '10';
+                    return (
                     <div
                       key={d.id}
                       className="rounded-2xl border border-teal-200 dark:border-teal-800/70 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between gap-3"
@@ -1240,7 +1299,7 @@ export const LabPage: React.FC = () => {
                           <SceneThumbnail2D scene={d.scene} />
                         </div>
                         <div className="flex items-center justify-between text-xs font-bold text-teal-700 dark:text-teal-400">
-                          <span>Bản vẽ 2D</span>
+                          <span>Bản vẽ 2D · Toán {inferredGrade}</span>
                           <span className="text-slate-400 font-normal">
                             {new Date(d.updatedAt).toLocaleDateString('vi-VN')}
                           </span>
@@ -1368,7 +1427,8 @@ export const LabPage: React.FC = () => {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
             </div>
           )}
         </div>

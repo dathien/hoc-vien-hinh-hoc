@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ALL_CHALLENGES, getChallengeById } from '../challenges';
 import { BADGE_DEFINITIONS, computeRank, TOTAL_POSSIBLE_STARS } from '../data/ranksAndBadges';
+import type { ThptGrade, ThptGradeFilter } from '../data/thptCurriculum';
 import type { GeoScene } from '../geometry/types';
 import { ALL_CHALLENGES_3D, getChallenge3DById, TOTAL_POSSIBLE_3D_STARS } from '../geometry3d/challenges3d';
 import type { Challenge3DProgressRecord, Geo3DScene, SavedDrawing3D } from '../geometry3d/types3d';
@@ -41,6 +42,11 @@ export interface AppContextValue {
   page: PageId;
   setPage: (p: PageId) => void;
   hydrated: boolean;
+
+  // Shared THPT Grade Filter (Tất cả | Toán 10 | Toán 11 | Toán 12)
+  activeGradeFilter: ThptGradeFilter;
+  setActiveGradeFilter: (g: ThptGradeFilter) => void;
+  openGradeTrack: (grade: ThptGrade, target?: PageId) => void;
 
   // Navigation helpers
   activeLevelId: number;
@@ -169,6 +175,7 @@ function computeUpdatedStreak(settings: AppSettings): Partial<AppSettings> | nul
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [page, setPage] = useState<PageId>('home');
   const [hydrated, setHydrated] = useState(false);
+  const [activeGradeFilter, setActiveGradeFilter] = useState<ThptGradeFilter>('all');
 
   const [activeLevelId, setActiveLevelId] = useState<number>(1);
   const [activeChallengeId, setActiveChallengeId] = useState<string | null>(null);
@@ -493,6 +500,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPage('campaign');
   }, []);
 
+  const openGradeTrack = useCallback((grade: ThptGrade, target: PageId = 'grades') => {
+    setActiveGradeFilter(grade);
+    if (target === 'campaign') {
+      setCampaignDimension(grade === '10' ? '2d' : '3d');
+      setActiveChallengeId(null);
+      setActiveChallenge3DId(null);
+    } else if (target === 'lab') {
+      setLabSubView(grade === '10' ? '2d' : '3d');
+    }
+    setPage(target);
+  }, []);
+
   const openLabWithScene = useCallback((scene?: GeoScene, title?: string) => {
     setLabInitialScene(scene ?? null);
     setLabInitialTitle(title ?? null);
@@ -610,6 +629,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     page,
     setPage,
     hydrated,
+    activeGradeFilter,
+    setActiveGradeFilter,
+    openGradeTrack,
     activeLevelId,
     setActiveLevelId,
     activeChallengeId,

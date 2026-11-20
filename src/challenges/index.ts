@@ -10,7 +10,6 @@ import { LEVELS_16_18 } from './levels_16_18';
 export { LEVELS };
 
 export const PROGRAM_LABELS: ProgramLabel[] = [
-  'Kiến thức nền tảng',
   'Toán 10',
   'Toán 11',
   'Toán 12',
@@ -18,60 +17,31 @@ export const PROGRAM_LABELS: ProgramLabel[] = [
   'Hình học Olympic',
 ];
 
-const TOAN_10_IDS = new Set([
-  'L04_C07',
-  'L04_C08',
-  'L04_C09',
-  'L09_C07',
-  'L09_C08',
-  'L11_C01',
-  'L11_C02',
-  'L11_C03',
-  'L11_C07',
-]);
-
-const TOAN_11_IDS = new Set([
-  'L08_C01',
-  'L08_C02',
-  'L08_C03',
-  'L08_C04',
-  'L08_C05',
-  'L08_C06',
-  'L08_C07',
-  'L08_C08',
-  'L08_C09',
-  'L08_C10',
-]);
+/**
+ * Các cấp độ dựng hình phẳng 2D gắn trực tiếp với nền tảng & trọng tâm Hình học phẳng Toán 10:
+ * Cấp I–VII (tam giác, vuông góc, góc, song song/tịnh tiến vectơ, tứ giác, các điểm đặc biệt),
+ * Cấp IX (Thalès & tỉ số đoạn thẳng) và Cấp XI (đường tròn & tiếp tuyến).
+ */
+const TOAN_10_LEVEL_IDS = new Set([1, 2, 3, 4, 5, 6, 7, 9, 11]);
+const TOAN_11_LEVEL_IDS = new Set([8]);
 
 /**
- * Phân loại khoa học theo phạm vi kiến thức thực tế (GDPT 2018 & SGK Kết nối tri thức với cuộc sống):
- * - Không mặc định các nội dung nâng cao/Olympic (đường tròn chín điểm, Fermat, Lemoine, Simson, Miquel, Napoleon, Sangaku) là kiến thức bắt buộc THPT.
- * - Không gán cưỡng ép Toán 12 cho các bài dựng hình phẳng cổ điển.
+ * Phân loại khoa học theo phạm vi THPT 10–11–12 (GDPT 2018 & SGK Kết nối tri thức với cuộc sống):
+ * - Toán 10: Các cấp độ dựng hình phẳng nền tảng & tọa độ phẳng (Cấp I–VII, IX, XI).
+ * - Toán 11: Chuyên đề phép biến hình phẳng (Cấp VIII) — kết hợp cùng 130 thử thách không gian 3D Toán 11.
+ * - Kiến thức mở rộng & Hình học Olympic: Các chuyên đề chuyên sâu (Cấp X, XII–XVIII).
  */
 export function getChallengeProgramLabel(ch: ChallengeDefinition): ProgramLabel {
   if (ch.levelId === 18 || ch.curriculumCategory === 'Olympic') {
     return 'Hình học Olympic';
   }
-  if (
-    ch.levelId === 10 ||
-    ch.levelId === 12 ||
-    ch.levelId === 14 ||
-    ch.levelId === 15 ||
-    ch.levelId === 16 ||
-    ch.levelId === 17 ||
-    (ch.levelId === 13 && ch.order > 1) ||
-    ch.curriculumCategory === 'Mở rộng' ||
-    ch.curriculumCategory === 'Học sinh giỏi'
-  ) {
-    return 'Kiến thức mở rộng';
-  }
-  if (TOAN_11_IDS.has(ch.id)) {
+  if (TOAN_11_LEVEL_IDS.has(ch.levelId)) {
     return 'Toán 11';
   }
-  if (TOAN_10_IDS.has(ch.id)) {
+  if (TOAN_10_LEVEL_IDS.has(ch.levelId)) {
     return 'Toán 10';
   }
-  return 'Kiến thức nền tảng';
+  return 'Kiến thức mở rộng';
 }
 
 export const ALL_CHALLENGES: ChallengeDefinition[] = [

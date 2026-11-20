@@ -25,6 +25,7 @@ import {
   LEVELS,
 } from '../challenges';
 import { ConfettiBurst } from '../components/common/ConfettiBurst';
+import { ThptGradeFilterBar } from '../components/common/ThptGradeFilterBar';
 import { ConstructionLogPanel } from '../components/geometry/ConstructionLogPanel';
 import { GeometryCanvas } from '../components/geometry/GeometryCanvas';
 import { GeoThumbnailSVG } from '../components/geometry/GeoThumbnailSVG';
@@ -69,6 +70,8 @@ function summarizeGivenHypothesis(specs: InitialGeoSpec[]): string {
 
 export const CampaignPage: React.FC = () => {
   const {
+    activeGradeFilter,
+    setActiveGradeFilter,
     activeLevelId,
     setActiveLevelId,
     activeChallengeId,
@@ -246,34 +249,52 @@ export const CampaignPage: React.FC = () => {
     }
   };
 
-  // VIEW 0: 3D Spatial Challenges (Lazy-loaded, strictly separate from 2D 540-star system)
+  const handleCampaignGradeChange = (g: 'all' | '10' | '11' | '12') => {
+    setActiveGradeFilter(g);
+    if (g === '10') {
+      setActiveChallenge3DId(null);
+      setCampaignDimension('2d');
+      setActiveLevelId(1);
+    } else if (g === '11') {
+      setActiveChallengeId(null);
+      setCampaignDimension('3d');
+    } else if (g === '12') {
+      setActiveChallengeId(null);
+      setCampaignDimension('3d');
+    }
+  };
+
+  // VIEW 0: 3D Spatial Challenges (Lazy-loaded, strictly separate from 2D star system)
   if (campaignDimension === '3d') {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <button
-            type="button"
-            onClick={() => {
-              setCampaignDimension('2d');
-              setActiveChallenge3DId(null);
-            }}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:border-teal-400"
-          >
-            Thử thách hình học phẳng 2D ({stats.completedCount}/180 · ★ {stats.totalStars}/540)
-          </button>
-          <button
-            type="button"
-            onClick={() => setCampaignDimension('3d')}
-            className="px-4 py-2.5 rounded-xl bg-teal-700 text-white text-[15px] font-semibold shadow-xs"
-          >
-            Thử thách hình học không gian 3D ({stats3D.completedCount}/{stats3D.totalChallenges} · ★ {stats3D.totalStars}/{stats3D.maxStars})
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <ThptGradeFilterBar value={activeGradeFilter} onChange={handleCampaignGradeChange} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCampaignDimension('2d');
+                setActiveChallenge3DId(null);
+              }}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-teal-400"
+            >
+              Hình học phẳng 2D ({stats.completedCount}/{stats.totalChallenges} · ★ {stats.totalStars}/{stats.maxStars})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCampaignDimension('3d')}
+              className="px-4 py-2 rounded-xl bg-sky-700 text-white text-sm font-semibold shadow-xs"
+            >
+              Không gian 3D &amp; Oxyz ({stats3D.completedCount}/{stats3D.totalChallenges} · ★ {stats3D.totalStars}/{stats3D.maxStars})
+            </button>
+          </div>
         </div>
 
         <Suspense
           fallback={
             <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-[15px] text-slate-600">
-              Đang tải hệ thống 180 thử thách Hình học không gian 3D...
+              Đang tải hệ thống {stats3D.totalChallenges} thử thách Hình học không gian 3D...
             </div>
           }
         >
@@ -283,37 +304,52 @@ export const CampaignPage: React.FC = () => {
     );
   }
 
-  // VIEW 1: 18-Level Map & Challenge Picker (2D)
+  // VIEW 1: Level Map & Challenge Picker (2D)
   if (!activeChallenge) {
-    const levelMeta = getLevelMeta(activeLevelId) ?? LEVELS[0];
-    const levelChallenges = getChallengesByLevel(activeLevelId);
+    const visible2DLevels =
+      activeGradeFilter === '10'
+        ? LEVELS.filter((lvl) => {
+            const ch0 = getChallengesByLevel(lvl.id)[0];
+            return ch0 ? getChallengeProgramLabel(ch0) === 'Toán 10' : true;
+          })
+        : LEVELS;
+    const effectiveLevelId = visible2DLevels.some((l) => l.id === activeLevelId)
+      ? activeLevelId
+      : visible2DLevels[0]?.id ?? LEVELS[0].id;
+    const levelMeta = getLevelMeta(effectiveLevelId) ?? LEVELS[0];
+    const levelChallenges = getChallengesByLevel(effectiveLevelId);
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <button
-            type="button"
-            onClick={() => setCampaignDimension('2d')}
-            className="px-4 py-2.5 rounded-xl bg-teal-700 text-white text-[15px] font-semibold shadow-xs"
-          >
-            Thử thách hình học phẳng 2D ({stats.completedCount}/180 · ★ {stats.totalStars}/540)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveChallengeId(null);
-              setCampaignDimension('3d');
-            }}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:border-sky-400"
-          >
-            Thử thách hình học không gian 3D ({stats3D.completedCount}/{stats3D.totalChallenges} · ★ {stats3D.totalStars}/{stats3D.maxStars})
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <ThptGradeFilterBar value={activeGradeFilter} onChange={handleCampaignGradeChange} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCampaignDimension('2d')}
+              className="px-4 py-2 rounded-xl bg-teal-700 text-white text-sm font-semibold shadow-xs"
+            >
+              Hình học phẳng 2D ({stats.completedCount}/{stats.totalChallenges} · ★ {stats.totalStars}/{stats.maxStars})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveChallengeId(null);
+                setCampaignDimension('3d');
+              }}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-sky-400"
+            >
+              Không gian 3D &amp; Oxyz ({stats3D.completedCount}/{stats3D.totalChallenges} · ★ {stats3D.totalStars}/{stats3D.maxStars})
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-              Hệ thống 18 Cấp độ – 180 Thử thách Hình học Phẳng
+              {activeGradeFilter === '10'
+                ? `Thử thách Hình học Phẳng 2D – Toán 10 (${visible2DLevels.length} cấp độ)`
+                : `Hệ thống ${LEVELS.length} Cấp độ – ${stats.totalChallenges} Thử thách Hình học Phẳng`}
             </h1>
             <p className="text-[15px] text-slate-600 dark:text-slate-400 mt-1">
               Hoàn thành bài trước (tối thiểu 1 sao) để mở khóa bài tiếp theo. Mỗi thử thách có tối đa 3 sao: Sao 1 (dựng hình chính xác), Sao 2 (tối ưu số bước dựng L), Sao 3 (tối ưu số phép dựng cơ bản E).
@@ -322,7 +358,7 @@ export const CampaignPage: React.FC = () => {
           {teacherPreviewMode && (
             <div className="flex items-center gap-2 rounded-xl border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/50 px-3.5 py-2 text-sm text-violet-900 dark:text-violet-200">
               <Eye className="w-4 h-4 shrink-0" />
-              <span>Chế độ Xem trước Giáo viên (đã mở toàn bộ 180 bài, không lưu sao)</span>
+              <span>Chế độ Xem trước Giáo viên (đã mở toàn bộ {stats.totalChallenges} bài, không lưu sao)</span>
               <button
                 type="button"
                 onClick={() => setTeacherPreviewMode(false)}
@@ -334,13 +370,13 @@ export const CampaignPage: React.FC = () => {
           )}
         </div>
 
-        {/* Horizontal 18-Level Selector */}
+        {/* Horizontal Level Selector */}
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {LEVELS.map((lvl) => {
+          {visible2DLevels.map((lvl) => {
             const list = getChallengesByLevel(lvl.id);
             const done = list.filter((c) => (progressMap[c.id]?.stars ?? 0) >= 1).length;
             const unlocked = isLevelUnlocked(lvl.id, progressMap, teacherPreviewMode);
-            const active = lvl.id === activeLevelId;
+            const active = lvl.id === effectiveLevelId;
 
             return (
               <button
@@ -360,7 +396,9 @@ export const CampaignPage: React.FC = () => {
                   {!unlocked && <Lock className="w-3 h-3 opacity-70" />}
                 </div>
                 <div className="text-xs truncate mt-0.5 opacity-95">{lvl.title}</div>
-                <div className="text-[11px] font-mono-tabular mt-1 opacity-80">{done}/10 bài</div>
+                <div className="text-[11px] font-mono-tabular mt-1 opacity-80">
+                  {done}/{list.length} bài
+                </div>
               </button>
             );
           })}

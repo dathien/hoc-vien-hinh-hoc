@@ -106,7 +106,7 @@ export const RANK_TIERS: RankTier[] = [
     title: 'Xuất sắc toàn diện',
     minStars: 500,
     color: '#B45309',
-    description: 'Đạt mức tối ưu về số bước dựng trên gần trọn bộ 180 thử thách Học viện.',
+    description: `Đạt mức tối ưu về số bước dựng trên gần trọn bộ ${ALL_CHALLENGES.length} thử thách hình học phẳng.`,
   },
 ];
 
@@ -205,7 +205,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
     id: 'b_50_done',
     title: 'Chinh phục 50 thử thách',
     description: 'Vượt qua 50 bài toán dựng hình động với kiểm chứng tính chính xác của phép dựng.',
-    criteriaText: 'Hoàn thành 50/180 thử thách',
+    criteriaText: `Hoàn thành 50/${ALL_CHALLENGES.length} thử thách`,
     category: 'Tiến trình',
     accentColor: '#0284C7',
     iconName: 'Layers',
@@ -219,7 +219,7 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
     id: 'b_100_done',
     title: 'Bách chiến hình học',
     description: 'Hoàn thành hơn một nửa lộ trình Học viện với 100 thử thách chính xác.',
-    criteriaText: 'Hoàn thành 100/180 thử thách',
+    criteriaText: `Hoàn thành 100/${ALL_CHALLENGES.length} thử thách`,
     category: 'Tiến trình',
     accentColor: '#7C3AED',
     iconName: 'Award',

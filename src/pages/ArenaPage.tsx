@@ -3,25 +3,43 @@ import QRCode from 'qrcode';
 import {
   CheckCircle2,
   Clock,
+  Compass,
   Crown,
+  Lightbulb,
   Monitor,
   Play,
   Plus,
   QrCode,
   ShieldCheck,
+  Sparkles,
   Swords,
   Trash2,
   Trophy,
   Users,
   X,
 } from 'lucide-react';
-import { ALL_CHALLENGES, getChallengeById, getChallengesByLevel, LEVELS } from '../challenges';
+import {
+  ALL_CHALLENGES,
+  getChallengeById,
+  getChallengesByLevel,
+  LEVELS,
+} from '../challenges';
 import { ConfettiBurst } from '../components/common/ConfettiBurst';
+import { ThptGradeFilterBar } from '../components/common/ThptGradeFilterBar';
 import { GeometryCanvas } from '../components/geometry/GeometryCanvas';
 import { ToolPalette } from '../components/geometry/ToolPalette';
+import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
 import { MathText } from '../components/math/MathText';
-import { computeSceneCosts, deleteObjectWithDependents } from '../geometry/engine';
+import {
+  ARENA_THPT_PROBLEMS,
+  getArenaProblemsByGrade,
+  type ArenaThptProblem,
+} from '../data/arenaProblems';
+import { THPT_GRADE_META } from '../data/thptCurriculum';
+import { computeSceneCosts, createEmptyScene, deleteObjectWithDependents } from '../geometry/engine';
+import { getTemplate2DById } from '../geometry/templates2d';
 import type { GeoScene, ToolId } from '../geometry/types';
+import { getTemplate3DById } from '../geometry3d/templates3d';
 import { audioService } from '../services/audioService';
 import type { ArenaParticipantResult, ArenaRoomRecord } from '../services/storageService';
 import { useApp } from '../store/AppContext';
@@ -32,13 +50,15 @@ const ARENA_MODES: Array<{
   title: string;
   desc: string;
 }> = [
-  { id: 'individual', title: 'Luyện tập cá nhân', desc: 'Tự luyện tốc độ và tối ưu số bước dựng trên bộ thử thách tự chọn.' },
+  { id: 'individual', title: 'Luyện tập cá nhân', desc: 'Tự luyện tốc độ và độ chính xác trên bộ đề hình học THPT.' },
   { id: '1v1', title: 'Thi đấu cá nhân (1v1)', desc: 'Hai học sinh lần lượt tranh tài trực tiếp trên cùng bộ đề.' },
-  { id: 'group', title: 'Thi đấu theo đội', desc: 'Các đội thảo luận chiến lược dựng hình tối ưu ít bước nhất.' },
+  { id: 'group', title: 'Thi đấu theo đội', desc: 'Các đội thảo luận chiến lược giải và dựng hình tối ưu.' },
   { id: 'class', title: 'Thi đấu trong lớp học', desc: 'Giáo viên tổ chức thi trên lớp với mã QR và bảng xếp hạng trình chiếu.' },
-  { id: 'multi_round', title: 'Thi đấu nhiều vòng', desc: 'Vượt qua liên tiếp từ 3 đến 10 thử thách tăng dần độ khó.' },
+  { id: 'multi_round', title: 'Thi đấu nhiều vòng', desc: 'Vượt qua liên tiếp từ 3 đến 10 bài tập tăng dần độ khó.' },
   { id: 'timed', title: 'Chạy đua thời gian', desc: 'Giới hạn thời gian nghiêm ngặt, khóa gợi ý và lời giải.' },
 ];
+
+const OPTION_LETTERS = ['A', 'B', 'C', 'D'] as const;
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -49,30 +69,48 @@ function generateRoomCode(): string {
   return out;
 }
 
-/**
- * Thứ tự xét kết quả thi đấu chuẩn:
- * 1. Hoàn thành phép dựng hợp lệ (nhiều bài đúng nhất)
- * 2. Số bước dựng ít nhất (L)
- * 3. Số phép dựng cơ bản ít nhất (E)
- * 4. Thời gian hoàn thành nhanh nhất
- */
 function sortLeaderboard(results: ArenaParticipantResult[]): ArenaParticipantResult[] {
   return [...results].sort((a, b) => {
     if (b.correctCount !== a.correctCount) return b.correctCount - a.correctCount;
+    if (b.totalStars !== a.totalStars) return b.totalStars - a.totalStars;
     if (a.totalL !== b.totalL) return a.totalL - b.totalL;
     if (a.totalE !== b.totalE) return a.totalE - b.totalE;
     return a.totalTimeSec - b.totalTimeSec;
   });
 }
 
+function getArenaProblemById(id: string): ArenaThptProblem | undefined {
+  return ARENA_THPT_PROBLEMS.find((p) => p.id === id);
+}
+
 export const ArenaPage: React.FC = () => {
-  const { arenaRooms, saveArenaRoom, deleteArenaRoom, settings, updateSettings, logStudyEvent } = useApp();
+  const {
+    activeGradeFilter,
+    setActiveGradeFilter,
+    arenaRooms,
+    saveArenaRoom,
+    deleteArenaRoom,
+    settings,
+    updateSettings,
+    logStudyEvent,
+  } = useApp();
 
   // Create room form state
+  const [arenaFormat, setArenaFormat] = useState<'thpt_quiz' | 'construction_2d'>('thpt_quiz');
   const [selectedMode, setSelectedMode] = useState<ArenaRoomRecord['mode']>('class');
-  const [roomTitle, setRoomTitle] = useState('Đấu trường Hình học Lớp 8A');
+  const [roomTitle, setRoomTitle] = useState('Đấu trường Hình học THPT');
   const [timeLimitSec, setTimeLimitSec] = useState(300);
   const [allowHints, setAllowHints] = useState(false);
+
+  // Selected items for quiz or construction
+  const [selectedQuizIds, setSelectedQuizIds] = useState<string[]>([
+    'AR10_01',
+    'AR10_02',
+    'AR11_01',
+    'AR11_02',
+    'AR12_01',
+    'AR12_02',
+  ]);
   const [selectedChallengeIds, setSelectedChallengeIds] = useState<string[]>([
     'L01_C01',
     'L02_C01',
@@ -86,23 +124,53 @@ export const ArenaPage: React.FC = () => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [ledMode, setLedMode] = useState(false);
 
-  // Active participant playing session
+  // Active participant playing session (shared timer + stats)
   const [playing, setPlaying] = useState(false);
   const [playerName, setPlayerName] = useState(settings.displayName);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [remainingSec, setRemainingSec] = useState(300);
+  const [sessionStats, setSessionStats] = useState({ correct: 0, stars: 0, totalL: 0, totalE: 0 });
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
+
+  // 2D Construction playing state
   const [scene, setScene] = useState<GeoScene | null>(null);
   const [history, setHistory] = useState<GeoScene[]>([]);
   const [activeTool, setActiveTool] = useState<ToolId>('circle_cp');
   const [selectedObjId, setSelectedObjId] = useState<string | null>(null);
-  const [sessionStats, setSessionStats] = useState({ correct: 0, stars: 0, totalL: 0, totalE: 0 });
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [confettiTrigger, setConfettiTrigger] = useState(0);
+
+  // THPT Quiz playing state
+  const [quizChoice, setQuizChoice] = useState<number | null>(null);
+  const [quizChecked, setQuizChecked] = useState(false);
+  const [quizShowHint, setQuizShowHint] = useState(false);
+  const [quiz2DScene, setQuiz2DScene] = useState<GeoScene>(() => createEmptyScene());
 
   const activeRoom = useMemo(
     () => arenaRooms.find((r) => r.id === activeRoomId) ?? null,
     [arenaRooms, activeRoomId]
   );
+
+  const visibleQuizProblems = useMemo(
+    () => getArenaProblemsByGrade(activeGradeFilter),
+    [activeGradeFilter]
+  );
+
+  const activeQuizProblem = useMemo(() => {
+    if (!playing || !activeRoom || activeRoom.format !== 'thpt_quiz') return null;
+    return getArenaProblemById(activeRoom.challengeIds[currentIdx]) ?? null;
+  }, [playing, activeRoom, currentIdx]);
+
+  useEffect(() => {
+    if (activeQuizProblem && activeQuizProblem.dimension === '2d') {
+      const tpl = getTemplate2DById(activeQuizProblem.templateId);
+      setQuiz2DScene(tpl ? tpl.buildScene() : createEmptyScene());
+    }
+  }, [activeQuizProblem]);
+
+  const activeQuiz3DScene = useMemo(() => {
+    if (!activeQuizProblem || activeQuizProblem.dimension !== '3d') return undefined;
+    return getTemplate3DById(activeQuizProblem.templateId)?.buildScene();
+  }, [activeQuizProblem]);
 
   // Generate real QR code whenever activeRoom changes
   useEffect(() => {
@@ -124,7 +192,12 @@ export const ArenaPage: React.FC = () => {
   useEffect(() => {
     if (!playing) return;
     if (remainingSec <= 0) {
-      void finishParticipantRun(sessionStats.correct, sessionStats.stars, sessionStats.totalL, sessionStats.totalE);
+      void finishParticipantRun(
+        sessionStats.correct,
+        sessionStats.stars,
+        sessionStats.totalL,
+        sessionStats.totalE
+      );
       return;
     }
     const t = window.setInterval(() => {
@@ -136,14 +209,31 @@ export const ArenaPage: React.FC = () => {
     return () => window.clearInterval(t);
   }, [playing, remainingSec]);
 
+  const handleQuickSelectQuizByGrade = (grade: 'all' | '10' | '11' | '12') => {
+    setActiveGradeFilter(grade);
+    const pool = getArenaProblemsByGrade(grade);
+    if (grade === 'all') {
+      setSelectedQuizIds(['AR10_01', 'AR10_02', 'AR11_01', 'AR11_02', 'AR12_01', 'AR12_02']);
+    } else {
+      setSelectedQuizIds(pool.slice(0, 6).map((p) => p.id));
+    }
+  };
+
   const handleCreateRoom = async () => {
-    if (selectedChallengeIds.length === 0) return;
+    const ids = arenaFormat === 'thpt_quiz' ? selectedQuizIds : selectedChallengeIds;
+    if (ids.length === 0) return;
     const room: ArenaRoomRecord = {
       id: `room_${Date.now()}`,
       code: generateRoomCode(),
-      title: roomTitle.trim() || 'Phòng thi Hình học Smart',
+      title:
+        roomTitle.trim() ||
+        (activeGradeFilter === 'all'
+          ? 'Đấu trường Hình học THPT'
+          : `Đấu trường Hình học Toán ${activeGradeFilter}`),
       mode: selectedMode,
-      challengeIds: selectedChallengeIds,
+      format: arenaFormat,
+      gradeFilter: activeGradeFilter,
+      challengeIds: ids,
       timeLimitSec,
       allowHints,
       allowSolution: false,
@@ -168,18 +258,28 @@ export const ArenaPage: React.FC = () => {
   };
 
   const startParticipantRun = () => {
-    if (!activeRoom) return;
-    const firstCh = getChallengeById(activeRoom.challengeIds[0]);
-    if (!firstCh) return;
+    if (!activeRoom || activeRoom.challengeIds.length === 0) return;
     setCurrentIdx(0);
     setRemainingSec(activeRoom.timeLimitSec);
     setSessionStats({ correct: 0, stars: 0, totalL: 0, totalE: 0 });
+    setFeedback(null);
+
+    if (activeRoom.format === 'thpt_quiz') {
+      setQuizChoice(null);
+      setQuizChecked(false);
+      setQuizShowHint(false);
+      setPlaying(true);
+      return;
+    }
+
+    const firstCh = getChallengeById(activeRoom.challengeIds[0]);
+    if (!firstCh) return;
     setScene(buildInitialScene(firstCh));
     setHistory([]);
     setSelectedObjId(null);
-    setFeedback(null);
     setActiveTool(
-      firstCh.allowedTools.find((t) => t === 'circle_cp' || t === 'line' || t === 'segment') ?? 'select'
+      firstCh.allowedTools.find((t) => t === 'circle_cp' || t === 'line' || t === 'segment') ??
+        'select'
     );
     setPlaying(true);
   };
@@ -220,6 +320,47 @@ export const ArenaPage: React.FC = () => {
     }
   };
 
+  // Quiz answer checking
+  const handleCheckQuizAnswer = () => {
+    if (!activeQuizProblem || quizChoice === null || quizChecked) return;
+    setQuizChecked(true);
+    const isCorrect = quizChoice === activeQuizProblem.correctIndex;
+    if (isCorrect) {
+      audioService.play('star');
+      const earnedStars = quizShowHint ? 2 : 3;
+      setSessionStats((prev) => ({
+        ...prev,
+        correct: prev.correct + 1,
+        stars: prev.stars + earnedStars,
+      }));
+      setFeedback(`Chính xác! Đạt ${earnedStars}/3 sao.`);
+    } else {
+      audioService.play('error');
+      setFeedback(
+        `Chưa chính xác. Đáp án đúng là phương án ${OPTION_LETTERS[activeQuizProblem.correctIndex]}.`
+      );
+    }
+  };
+
+  const handleNextQuizQuestion = () => {
+    if (!activeRoom) return;
+    if (currentIdx + 1 >= activeRoom.challengeIds.length) {
+      void finishParticipantRun(
+        sessionStats.correct,
+        sessionStats.stars,
+        sessionStats.totalL,
+        sessionStats.totalE
+      );
+    } else {
+      setCurrentIdx((i) => i + 1);
+      setQuizChoice(null);
+      setQuizChecked(false);
+      setQuizShowHint(false);
+      setFeedback(null);
+    }
+  };
+
+  // 2D Construction submission
   const submitCurrentChallenge = () => {
     if (!activeRoom || !scene) return;
     const chId = activeRoom.challengeIds[currentIdx];
@@ -261,6 +402,16 @@ export const ArenaPage: React.FC = () => {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const quizGradeCounts = useMemo(
+    () => ({
+      all: ARENA_THPT_PROBLEMS.length,
+      '10': getArenaProblemsByGrade('10').length,
+      '11': getArenaProblemsByGrade('11').length,
+      '12': getArenaProblemsByGrade('12').length,
+    }),
+    []
+  );
+
   // LED FULLSCREEN PRESENTATION MODE
   if (ledMode && activeRoom) {
     const sorted = sortLeaderboard(activeRoom.results);
@@ -270,7 +421,7 @@ export const ArenaPage: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-5">
           <div>
             <div className="text-sm font-bold uppercase tracking-widest text-teal-400">
-              CHẾ ĐỘ TRÌNH CHIẾU LED · HỌC VIỆN HÌNH HỌC SMART
+              CHẾ ĐỘ TRÌNH CHIẾU LED · HỌC VIỆN HÌNH HỌC SMART THPT
             </div>
             <h1 className="text-3xl sm:text-5xl font-extrabold mt-1">{activeRoom.title}</h1>
           </div>
@@ -293,7 +444,6 @@ export const ArenaPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 items-start">
-          {/* QR & Room info */}
           <div className="lg:col-span-4 rounded-3xl bg-slate-900 border border-slate-700 p-6 flex flex-col items-center text-center space-y-4">
             {qrDataUrl && (
               <img
@@ -303,14 +453,15 @@ export const ArenaPage: React.FC = () => {
               />
             )}
             <div className="text-xl font-bold text-teal-300">
-              {activeRoom.challengeIds.length} thử thách · Giới hạn {formatClock(activeRoom.timeLimitSec)}
+              {activeRoom.challengeIds.length} câu · Giới hạn {formatClock(activeRoom.timeLimitSec)}
             </div>
             <p className="text-sm text-slate-400">
-              Thứ tự xét kết quả: 1. Hoàn thành phép dựng hợp lệ → 2. Số bước dựng (L) → 3. Số phép dựng cơ bản (E) → 4. Thời gian hoàn thành.
+              {activeRoom.format === 'thpt_quiz'
+                ? 'Xếp hạng theo: Số câu đúng → Tổng sao → Thời gian hoàn thành nhanh nhất.'
+                : 'Thứ tự xét kết quả: 1. Phép dựng hợp lệ → 2. Bước dựng (L) → 3. Cơ bản (E) → 4. Thời gian.'}
             </p>
           </div>
 
-          {/* Live Leaderboard + Top 3 Podium */}
           <div className="lg:col-span-8 rounded-3xl bg-slate-900 border border-slate-700 p-6 space-y-5">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
@@ -352,9 +503,11 @@ export const ArenaPage: React.FC = () => {
                         {r.correctCount}/{activeRoom.challengeIds.length} đúng
                       </span>
                       <span className="text-amber-400 font-bold">★ {r.totalStars}</span>
-                      <span className="text-sky-300 hidden sm:inline">
-                        {r.totalL}L · {r.totalE}E
-                      </span>
+                      {activeRoom.format !== 'thpt_quiz' && (
+                        <span className="text-sky-300 hidden sm:inline">
+                          {r.totalL}L · {r.totalE}E
+                        </span>
+                      )}
                       <span className="text-slate-300">{r.totalTimeSec}s</span>
                     </div>
                   </div>
@@ -367,7 +520,192 @@ export const ArenaPage: React.FC = () => {
     );
   }
 
-  // PLAYING SESSION VIEW
+  // PLAYING SESSION VIEW 1: THPT QUIZ ARENA (Toán 10, 11, 12)
+  if (playing && activeRoom && activeRoom.format === 'thpt_quiz' && activeQuizProblem) {
+    const gradeMeta = THPT_GRADE_META[activeQuizProblem.grade];
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-900 text-white px-5 py-3.5">
+          <div>
+            <div className="text-xs text-teal-300 font-semibold uppercase">
+              {activeRoom.title} · Thí sinh: {playerName} · Câu {currentIdx + 1}/{activeRoom.challengeIds.length}
+            </div>
+            <div className="text-lg font-bold">
+              {gradeMeta.label} · {activeQuizProblem.title}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-mono-tabular font-bold text-lg ${
+                remainingSec <= 30 ? 'bg-rose-600 text-white' : 'bg-slate-800 text-amber-300'
+              }`}
+            >
+              <Clock className="w-5 h-5" />
+              {formatClock(remainingSec)}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                void finishParticipantRun(
+                  sessionStats.correct,
+                  sessionStats.stars,
+                  sessionStats.totalL,
+                  sessionStats.totalE
+                )
+              }
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300"
+            >
+              Kết thúc sớm
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Live Interactive 2D/3D Illustration */}
+          <div className="lg:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-2.5">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className={`px-2 py-0.5 rounded border ${gradeMeta.badgeClass}`}>
+                {gradeMeta.label} · {activeQuizProblem.difficulty}
+              </span>
+              <span className="text-slate-500">{activeQuizProblem.chapter}</span>
+            </div>
+
+            {activeQuizProblem.dimension === '2d' ? (
+              <GeometryCanvas
+                scene={quiz2DScene}
+                onSceneChange={setQuiz2DScene}
+                interactiveDragOnly
+                compactToolbar
+                heightClass="h-[300px]"
+                darkTheme={settings.theme === 'dark'}
+              />
+            ) : (
+              <div className="h-[300px] rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 flex items-center justify-center p-2">
+                <LiveGeo3DPreview
+                  scene={activeQuiz3DScene}
+                  variant="hero_pyramid"
+                  width={420}
+                  height={280}
+                  animate={false}
+                  reducedMotion={settings.reducedMotion}
+                />
+              </div>
+            )}
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Tham chiếu SGK: {activeQuizProblem.lessonTitle}
+            </div>
+          </div>
+
+          {/* Question + Options + Hint + Solution */}
+          <div className="lg:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
+            <div className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white leading-relaxed">
+              <MathText text={activeQuizProblem.prompt} />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {activeQuizProblem.options.map((opt, idx) => {
+                const isSelected = quizChoice === idx;
+                const isRight = idx === activeQuizProblem.correctIndex;
+                let style =
+                  'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 hover:border-teal-400';
+                if (quizChecked) {
+                  if (isRight) {
+                    style =
+                      'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-100';
+                  } else if (isSelected) {
+                    style =
+                      'border-rose-500 bg-rose-50 dark:bg-rose-950/50 text-rose-950 dark:text-rose-100';
+                  }
+                } else if (isSelected) {
+                  style =
+                    'border-teal-600 bg-teal-50 dark:bg-teal-950/50 ring-2 ring-teal-500/30';
+                }
+
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    disabled={quizChecked}
+                    onClick={() => setQuizChoice(idx)}
+                    className={`rounded-xl border p-4 text-left transition-all flex items-start gap-3 ${style}`}
+                  >
+                    <span className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold text-sm flex items-center justify-center shrink-0">
+                      {OPTION_LETTERS[idx]}
+                    </span>
+                    <span className="text-[15px] text-slate-800 dark:text-slate-100 leading-snug pt-0.5">
+                      <MathText text={opt} />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeRoom.allowHints && !quizChecked && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setQuizShowHint(true)}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-400 hover:underline"
+                >
+                  <Lightbulb className="w-4 h-4" />
+                  {quizShowHint ? 'Đã mở gợi ý' : 'Xem gợi ý (-1 sao nếu đúng)'}
+                </button>
+                {quizShowHint && (
+                  <div className="mt-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-950 dark:text-amber-200">
+                    <MathText text={activeQuizProblem.hint} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {feedback && (
+              <div
+                className={`rounded-xl border px-4 py-3 text-[15px] space-y-1.5 ${
+                  quizChoice === activeQuizProblem.correctIndex
+                    ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100'
+                    : 'border-rose-300 bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100'
+                }`}
+              >
+                <div className="font-bold">{feedback}</div>
+                <div className="text-sm leading-relaxed">
+                  <strong>Lời giải chi tiết: </strong>
+                  <MathText text={activeQuizProblem.solution} />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="text-sm font-mono-tabular text-slate-500">
+                Đúng: <strong className="text-emerald-600">{sessionStats.correct}</strong> · ★{' '}
+                <strong className="text-amber-600">{sessionStats.stars}</strong>
+              </div>
+              {!quizChecked ? (
+                <button
+                  type="button"
+                  disabled={quizChoice === null}
+                  onClick={handleCheckQuizAnswer}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-700 text-white font-semibold text-[15px] hover:bg-teal-800 disabled:opacity-45"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  Kiểm tra đáp án
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleNextQuizQuestion}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-700 text-white font-semibold text-[15px] hover:bg-sky-800"
+                >
+                  {currentIdx + 1 >= activeRoom.challengeIds.length ? 'Hoàn thành lượt thi' : 'Câu tiếp theo →'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // PLAYING SESSION VIEW 2: 2D CONSTRUCTION ARENA
   if (playing && activeRoom && scene) {
     const ch = getChallengeById(activeRoom.challengeIds[currentIdx]);
     if (!ch) return null;
@@ -490,10 +828,10 @@ export const ArenaPage: React.FC = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Swords className="w-7 h-7 text-amber-600" />
-            Đấu trường Toán học
+            Đấu trường Toán học THPT
           </h1>
           <p className="text-[15px] text-slate-600 dark:text-slate-400 mt-1">
-            Luyện tập cá nhân, thi đấu cá nhân, theo đội và trong lớp học ngay trên thiết bị (hoạt động ngoại tuyến, không cần đăng nhập) kèm mã QR và trình chiếu bảng xếp hạng.
+            Tổ chức thi đấu hình học cho Toán 10, Toán 11 và Toán 12 ngay trên thiết bị (hoạt động ngoại tuyến) kèm mã QR và bảng xếp hạng trình chiếu LED.
           </p>
         </div>
 
@@ -517,6 +855,41 @@ export const ArenaPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Unified THPT Grade Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ThptGradeFilterBar
+          value={activeGradeFilter}
+          onChange={handleQuickSelectQuizByGrade}
+          counts={quizGradeCounts}
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setArenaFormat('thpt_quiz')}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+              arenaFormat === 'thpt_quiz'
+                ? 'bg-teal-700 text-white border-teal-700'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            Thi đấu Tư duy THPT ({ARENA_THPT_PROBLEMS.length} câu)
+          </button>
+          <button
+            type="button"
+            onClick={() => setArenaFormat('construction_2d')}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+              arenaFormat === 'construction_2d'
+                ? 'bg-teal-700 text-white border-teal-700'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            <Compass className="w-4 h-4" />
+            Thi đấu Dựng hình 2D ({ALL_CHALLENGES.length} bài)
+          </button>
+        </div>
+      </div>
+
       {feedback && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/40 px-4 py-2.5 text-sm text-amber-900 dark:text-amber-200">
           {feedback}
@@ -529,11 +902,17 @@ export const ArenaPage: React.FC = () => {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-1">
               <div className="text-xs font-bold uppercase tracking-wide text-teal-700 dark:text-teal-400">
-                Phòng thi đang mở · Mã phòng: <span className="font-mono-tabular text-base text-amber-600 dark:text-amber-400">{activeRoom.code}</span>
+                Phòng thi đang mở · Mã phòng:{' '}
+                <span className="font-mono-tabular text-base text-amber-600 dark:text-amber-400">
+                  {activeRoom.code}
+                </span>
+                {' · '}
+                {activeRoom.format === 'thpt_quiz' ? 'Tư duy THPT' : 'Dựng hình 2D'}
               </div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{activeRoom.title}</h2>
               <div className="text-sm text-slate-600 dark:text-slate-300">
-                {activeRoom.challengeIds.length} thử thách · Thời gian {formatClock(activeRoom.timeLimitSec)} · {activeRoom.allowHints ? 'Cho phép gợi ý' : 'Khóa gợi ý & lời giải'}
+                {activeRoom.challengeIds.length} bài · Thời gian {formatClock(activeRoom.timeLimitSec)} ·{' '}
+                {activeRoom.allowHints ? 'Cho phép gợi ý' : 'Khóa gợi ý & lời giải'}
               </div>
             </div>
 
@@ -557,7 +936,6 @@ export const ArenaPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Start Participant Run + QR */}
             <div className="lg:col-span-5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4">
               <div className="flex items-center gap-4">
                 {qrDataUrl && (
@@ -605,7 +983,9 @@ export const ArenaPage: React.FC = () => {
                   Bảng xếp hạng ({activeRoom.results.length})
                 </h3>
                 <span className="text-xs text-slate-500">
-                  Xếp hạng: Hợp lệ → Bước dựng (L) → Cơ bản (E) → Thời gian
+                  {activeRoom.format === 'thpt_quiz'
+                    ? 'Xếp hạng: Số câu đúng → Tổng sao → Thời gian'
+                    : 'Xếp hạng: Hợp lệ → Bước dựng (L) → Cơ bản (E) → Thời gian'}
                 </span>
               </div>
 
@@ -629,7 +1009,9 @@ export const ArenaPage: React.FC = () => {
                           {r.correctCount}/{activeRoom.challengeIds.length} bài
                         </span>
                         <span className="text-amber-600 font-bold">★{r.totalStars}</span>
-                        <span className="text-slate-500">{r.totalL}L/{r.totalE}E</span>
+                        {activeRoom.format !== 'thpt_quiz' && (
+                          <span className="text-slate-500">{r.totalL}L/{r.totalE}E</span>
+                        )}
                         <span className="text-slate-500">{r.totalTimeSec}s</span>
                       </div>
                     </div>
@@ -641,7 +1023,7 @@ export const ArenaPage: React.FC = () => {
         </div>
       )}
 
-      {/* 6 Modes + Room Creator */}
+      {/* Room Creator + Saved Rooms */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -675,6 +1057,7 @@ export const ArenaPage: React.FC = () => {
                 type="text"
                 value={roomTitle}
                 onChange={(e) => setRoomTitle(e.target.value)}
+                placeholder="Ví dụ: Đấu trường Hình học Lớp 10A1"
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
               />
             </label>
@@ -693,77 +1076,130 @@ export const ArenaPage: React.FC = () => {
             </label>
           </div>
 
-          {/* Ranking Criteria Explanation Before Starting */}
-          <div className="rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 px-3.5 py-2.5 text-sm text-sky-950 dark:text-sky-200">
-            <strong>Tiêu chí xét kết quả thi đấu:</strong> 1. Hoàn thành phép dựng hợp lệ → 2. Số bước dựng ít nhất (L) → 3. Số phép dựng cơ bản ít nhất (E) → 4. Thời gian hoàn thành nhanh nhất.
-          </div>
-
-          {/* Challenge Multi-picker (1–10 challenges across all 18 levels) */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="font-medium text-slate-700 dark:text-slate-300">
-                Chọn bộ thử thách (đã chọn {selectedChallengeIds.length}/10)
-              </span>
-              <div className="flex items-center gap-2">
-                <select
-                  value={pickerLevelId}
-                  onChange={(e) => setPickerLevelId(Number(e.target.value))}
-                  className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200"
-                >
-                  <option value={0}>Tất cả 18 cấp độ</option>
-                  {LEVELS.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      Cấp {l.roman}: {l.title}
-                    </option>
-                  ))}
-                </select>
+          {/* Picker for THPT Quiz OR 2D Construction */}
+          {arenaFormat === 'thpt_quiz' ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  Chọn bộ câu hỏi Hình học THPT (đã chọn {selectedQuizIds.length}/10)
+                </span>
                 <button
                   type="button"
-                  onClick={() => setSelectedChallengeIds(['L01_C01', 'L02_C01', 'L03_C01', 'L04_C01', 'L07_C09'])}
+                  onClick={() => setSelectedQuizIds(visibleQuizProblems.slice(0, 6).map((p) => p.id))}
                   className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline"
                 >
-                  Chọn 5 bài mẫu
+                  Chọn nhanh 6 câu theo bộ lọc
                 </button>
               </div>
-            </div>
-            <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
-              {(pickerLevelId === 0 ? ALL_CHALLENGES : getChallengesByLevel(pickerLevelId)).map((ch) => {
-                const checked = selectedChallengeIds.includes(ch.id);
-                return (
-                  <label
-                    key={ch.id}
-                    className="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            if (selectedChallengeIds.length < 10) {
-                              setSelectedChallengeIds([...selectedChallengeIds, ch.id]);
+              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                {visibleQuizProblems.map((p) => {
+                  const checked = selectedQuizIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              if (selectedQuizIds.length < 10) {
+                                setSelectedQuizIds([...selectedQuizIds, p.id]);
+                              }
+                            } else {
+                              setSelectedQuizIds(selectedQuizIds.filter((id) => id !== p.id));
                             }
-                          } else {
-                            setSelectedChallengeIds(selectedChallengeIds.filter((id) => id !== ch.id));
-                          }
-                        }}
-                        className="rounded text-teal-700"
-                      />
-                      <span className="truncate text-slate-800 dark:text-slate-200">
-                        <strong className="font-mono-tabular text-xs text-slate-400 mr-1.5">
-                          C{ch.levelId}.{ch.order}
-                        </strong>
-                        {ch.title}
-                      </span>
-                    </div>
-                    <span className="text-xs font-mono-tabular text-slate-400 shrink-0">
-                      {ch.targetL}L/{ch.targetE}E
-                    </span>
-                  </label>
-                );
-              })}
+                          }}
+                          className="rounded text-teal-700"
+                        />
+                        <span className="truncate text-slate-800 dark:text-slate-200">
+                          <strong className="text-xs text-teal-700 dark:text-teal-400 mr-1.5">
+                            Toán {p.grade}
+                          </strong>
+                          {p.title}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-400 shrink-0">{p.difficulty}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  Chọn bộ thử thách Dựng hình 2D (đã chọn {selectedChallengeIds.length}/10)
+                </span>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={pickerLevelId}
+                    onChange={(e) => setPickerLevelId(Number(e.target.value))}
+                    className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200"
+                  >
+                    <option value={0}>Tất cả {LEVELS.length} cấp độ</option>
+                    {LEVELS.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        Cấp {l.roman}: {l.title}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedChallengeIds(['L01_C01', 'L02_C01', 'L03_C01', 'L04_C01', 'L07_C09'])
+                    }
+                    className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline"
+                  >
+                    Chọn 5 bài mẫu
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                {(pickerLevelId === 0 ? ALL_CHALLENGES : getChallengesByLevel(pickerLevelId)).map(
+                  (ch) => {
+                    const checked = selectedChallengeIds.includes(ch.id);
+                    return (
+                      <label
+                        key={ch.id}
+                        className="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                if (selectedChallengeIds.length < 10) {
+                                  setSelectedChallengeIds([...selectedChallengeIds, ch.id]);
+                                }
+                              } else {
+                                setSelectedChallengeIds(
+                                  selectedChallengeIds.filter((id) => id !== ch.id)
+                                );
+                              }
+                            }}
+                            className="rounded text-teal-700"
+                          />
+                          <span className="truncate text-slate-800 dark:text-slate-200">
+                            <strong className="font-mono-tabular text-xs text-slate-400 mr-1.5">
+                              C{ch.levelId}.{ch.order}
+                            </strong>
+                            {ch.title}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono-tabular text-slate-400 shrink-0">
+                          {ch.targetL}L/{ch.targetE}E
+                        </span>
+                      </label>
+                    );
+                  }
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
             <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
@@ -778,7 +1214,11 @@ export const ArenaPage: React.FC = () => {
             <button
               type="button"
               onClick={() => void handleCreateRoom()}
-              disabled={selectedChallengeIds.length === 0}
+              disabled={
+                arenaFormat === 'thpt_quiz'
+                  ? selectedQuizIds.length === 0
+                  : selectedChallengeIds.length === 0
+              }
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-700 text-white font-semibold text-sm hover:bg-teal-800 disabled:opacity-45"
             >
               <CheckCircle2 className="w-4 h-4" />
@@ -819,7 +1259,9 @@ export const ArenaPage: React.FC = () => {
                       </span>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {room.challengeIds.length} bài · {room.results.length} lượt thi · {formatClock(room.timeLimitSec)}
+                      {room.format === 'thpt_quiz' ? 'Tư duy THPT' : 'Dựng hình 2D'} ·{' '}
+                      {room.challengeIds.length} bài · {room.results.length} lượt thi ·{' '}
+                      {formatClock(room.timeLimitSec)}
                     </div>
                   </button>
                   <button
@@ -836,7 +1278,7 @@ export const ArenaPage: React.FC = () => {
           )}
 
           <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            <strong>Gợi ý tổ chức lớp học:</strong> Các phòng thi và bảng xếp hạng được lưu trực tiếp trên thiết bị (hoạt động cả khi không có mạng), rất thuận tiện để tổ chức thi đấu trên bảng tương tác, máy chiếu hoặc màn hình LED lớp học.
+            <strong>Gợi ý tổ chức lớp học THPT:</strong> Các phòng thi Toán 10 – 11 – 12 và bảng xếp hạng được lưu trực tiếp trên thiết bị (hoạt động ngoại tuyến), thuận tiện trình chiếu trên bảng tương tác, máy chiếu hoặc màn hình LED.
           </div>
         </div>
       </div>

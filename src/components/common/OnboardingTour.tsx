@@ -6,27 +6,27 @@ const TOUR_STEPS = [
   {
     icon: Compass,
     title: 'Chào mừng đến với Học Viện Hình Học Smart',
-    body: 'Đây là không gian hình học động kết hợp thử thách dựng hình bằng thước thẳng không chia độ và compa — miễn phí, không cần đăng nhập để thực hành và hỗ trợ sử dụng ngoại tuyến.',
+    body: 'Không gian học tập và thực hành hình học tương tác dành cho giáo viên và học sinh THPT lớp 10, 11 và 12 — miễn phí, không cần đăng nhập và hỗ trợ sử dụng ngoại tuyến.',
   },
   {
     icon: CheckCircle2,
-    title: '18 Cấp độ – 180 Thử thách & Kiểm chứng hình học động',
-    body: 'Mọi bài toán đều được kiểm chứng tính chính xác của phép dựng trên nhiều cấu hình giả thiết khác nhau. Đạt 1 sao khi dựng hình chính xác, 2 sao khi tối ưu số bước dựng (L) và 3 sao khi tối ưu số phép dựng cơ bản (E).',
+    title: 'Thử thách Hình học 2D & 3D theo Chương trình THPT',
+    body: 'Luyện tập dựng hình phẳng (Toán 10), hình học không gian (Toán 11) và tọa độ Oxyz (Toán 12) với cơ chế kiểm chứng hình học động và hệ thống chấm sao minh bạch.',
   },
   {
     icon: BookOpen,
-    title: 'Phòng thực hành & Thư viện kiến thức hình học',
-    body: 'Tự do khám phá định lí bằng cách kéo thả các điểm trên bảng vẽ, chuyển đổi giữa chế độ Vẽ nhanh hoặc Thước thẳng & Compa ảo, lưu bản vẽ trên thiết bị và xuất hình PNG/SVG.',
+    title: 'Phòng thực hành 2D – 3D & Thư viện SGK Kết nối tri thức',
+    body: 'Khám phá trực tiếp các bài học theo từng khối lớp, xoay mô hình 3D 360°, cắt thiết diện động, lưu bản vẽ trên thiết bị và xuất hình ảnh PNG/SVG sắc nét.',
   },
   {
     icon: Swords,
-    title: 'Đấu trường Toán học & Trình chiếu lớp học',
-    body: 'Tổ chức luyện tập cá nhân, thi đấu cá nhân, theo đội hoặc trong lớp học với mã phòng 6 ký tự, mã QR, đồng hồ đếm ngược và chế độ trình chiếu màn hình lớn.',
+    title: 'Đấu trường Toán học THPT & Trình chiếu lớp học',
+    body: 'Tổ chức luyện tập cá nhân, thi đấu theo đội hoặc trong lớp học theo từng khối Toán 10, Toán 11, Toán 12 với mã phòng 6 ký tự, mã QR và bảng xếp hạng trực tiếp.',
   },
   {
     icon: GraduationCap,
     title: 'Công cụ giáo viên & Giấy chứng nhận thành tích',
-    body: 'Giáo viên có thể bật chế độ xem trước toàn bộ 180 bài để giảng dạy và tạo bài tập dựng hình trực quan; học sinh nhận danh hiệu, huy hiệu và giấy chứng nhận thành tích khổ A4.',
+    body: 'Giáo viên có thể bật chế độ xem trước bài học để giảng dạy, tạo bài tập dựng hình trực quan và quản lý lớp; học sinh nhận danh hiệu, huy hiệu và giấy chứng nhận khổ A4.',
   },
 ];
 

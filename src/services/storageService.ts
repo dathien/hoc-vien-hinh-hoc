@@ -19,6 +19,7 @@ export interface SavedDrawing {
   id: string;
   title: string;
   description?: string;
+  gradeTag?: '10' | '11' | '12';
   scene: GeoScene;
   updatedAt: string;
   createdAt: string;
@@ -49,6 +50,8 @@ export interface ArenaRoomRecord {
   code: string;
   title: string;
   mode: 'individual' | '1v1' | 'group' | 'class' | 'multi_round' | 'timed';
+  gradeFilter?: 'all' | '10' | '11' | '12';
+  format?: 'construction_2d' | 'thpt_quiz';
   challengeIds: string[];
   timeLimitSec: number;
   allowHints: boolean;
