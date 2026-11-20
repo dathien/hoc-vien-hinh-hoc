@@ -32,7 +32,9 @@ import {
   deleteObjectWithDependents,
   moveFreePoint,
   recomputeScene,
+  renameGeoObject,
 } from '../geometry/engine';
+import { getPendingDisplayNames2D } from '../geometry/naming2d';
 import { TEMPLATES_2D } from '../geometry/templates2d';
 import { TOOL_CATALOG } from '../geometry/tools';
 import type { GeoObject, GeoScene, ToolId } from '../geometry/types';
@@ -389,11 +391,9 @@ export const LabPage: React.FC = () => {
   };
 
   const updateObjectLabel = (id: string, newLabel: string) => {
-    const next = cloneScene(scene);
-    const obj = next.objects[id];
-    if (!obj) return;
-    obj.label = newLabel;
-    handleSceneChange(next, false);
+    const next = renameGeoObject(scene, id, newLabel);
+    if (next === scene) return;
+    handleSceneChange(next, true);
   };
 
   const updatePointCoords = (id: string, x: number, y: number) => {
@@ -736,7 +736,7 @@ export const LabPage: React.FC = () => {
               <SmartInstructionBar
                 toolName={active2DToolInfo.name}
                 instruction={active2DInstruction}
-                selectedLabels={pending2DIds.map((id) => scene.objects[id]?.label ?? id)}
+                selectedLabels={getPendingDisplayNames2D(scene, pending2DIds)}
                 canCancel={activeTool !== 'select' || pending2DIds.length > 0}
                 onCancel={() => setActiveTool('select')}
               />

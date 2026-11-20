@@ -214,7 +214,7 @@ export const VerticalToolSidebar3D: React.FC<VerticalToolSidebar3DProps> = ({
               Truy cập nhanh
             </div>
           )}
-          <div className={collapsed ? 'flex flex-col gap-1' : 'grid grid-cols-2 gap-1.5'}>
+          <div className="flex flex-col gap-1.5">
             {QUICK_TOOLS_3D.map((qt) => {
               const Icon = qt.icon;
               const isActive = activeTool === qt.id;
@@ -227,16 +227,16 @@ export const VerticalToolSidebar3D: React.FC<VerticalToolSidebar3DProps> = ({
                     setOpenGroupId(null);
                   }}
                   title={getTool3DDef(qt.id).name}
-                  className={`flex items-center ${
-                    collapsed ? 'justify-center px-0' : 'justify-start gap-1.5 px-2.5'
-                  } min-h-[42px] rounded-xl text-[14px] font-semibold transition-colors ${
+                  className={`w-full flex items-center ${
+                    collapsed ? 'justify-center px-0' : 'justify-start gap-2.5 px-3'
+                  } min-h-[42px] rounded-xl text-[15px] font-semibold transition-colors ${
                     isActive
                       ? 'bg-teal-700 text-white shadow-xs'
                       : 'bg-slate-50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{qt.label}</span>}
+                  {!collapsed && <span className="whitespace-nowrap">{qt.label}</span>}
                 </button>
               );
             })}
@@ -261,7 +261,7 @@ export const VerticalToolSidebar3D: React.FC<VerticalToolSidebar3DProps> = ({
                 onClick={() => setOpenGroupId((cur) => (cur === grp.id ? null : grp.id))}
                 title={grp.label}
                 className={`w-full flex items-center ${
-                  collapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+                  collapsed ? 'justify-center px-0' : 'justify-between px-3'
                 } min-h-[42px] rounded-xl text-[15px] font-medium transition-colors ${
                   isOpen
                     ? 'bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 ring-1 ring-teal-500/40'
@@ -276,7 +276,7 @@ export const VerticalToolSidebar3D: React.FC<VerticalToolSidebar3DProps> = ({
                       hasActive || isOpen ? 'text-teal-700 dark:text-teal-400' : 'text-slate-500'
                     }`}
                   />
-                  {!collapsed && <span className="truncate">{grp.shortLabel}</span>}
+                  {!collapsed && <span className="whitespace-nowrap">{grp.shortLabel}</span>}
                 </span>
                 {!collapsed && (
                   <ChevronRight
@@ -361,7 +361,7 @@ export const VerticalToolSidebar3D: React.FC<VerticalToolSidebar3DProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[14px] font-semibold leading-snug">{def.name}</span>
+                  <span className="text-[15px] font-semibold leading-snug">{def.name}</span>
                   {def.isExtended && (
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${

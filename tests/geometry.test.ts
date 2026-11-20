@@ -6,7 +6,14 @@ import {
   deleteObjectWithDependents,
   moveFreePoint,
   recomputeScene,
+  renameGeoObject,
 } from '../src/geometry/engine';
+import {
+  getObjectDescription2D,
+  getObjectDisplayName2D,
+  getPendingDisplayNames2D,
+  groupObjects2D,
+} from '../src/geometry/naming2d';
 import {
   angleDegrees,
   areCollinear,
@@ -243,3 +250,131 @@ describe('Mandatory Acceptance Test: Level I – Challenge 1 (Tam giác đều)'
     expect(report.stars).toBe(0);
   });
 });
+
+describe('2D Textbook Geometric Naming, Rename Propagation & Grouping', () => {
+  it('generates textbook SGK names from actual geometry and updates dependents on rename while preserving IDs and custom labels', () => {
+    let scene = createEmptyScene();
+    const rA = addGeoObject(scene, {
+      id: 'po_alpha_1',
+      kind: 'point',
+      rule: 'free_point',
+      parents: [],
+      x: 0,
+      y: 0,
+      label: 'A',
+      tool: 'point',
+    });
+    scene = rA.scene;
+    const rB = addGeoObject(scene, {
+      id: 'po_beta_2',
+      kind: 'point',
+      rule: 'free_point',
+      parents: [],
+      x: 120,
+      y: 0,
+      label: 'B',
+      tool: 'point',
+    });
+    scene = rB.scene;
+    const rC = addGeoObject(scene, {
+      id: 'po_gamma_3',
+      kind: 'point',
+      rule: 'free_point',
+      parents: [],
+      x: 50,
+      y: -90,
+      label: 'C',
+      tool: 'point',
+    });
+    scene = rC.scene;
+
+    const rSeg = addGeoObject(scene, {
+      id: 'se_ab_1',
+      kind: 'segment',
+      rule: 'segment_two_points',
+      parents: [rA.id, rB.id],
+      tool: 'segment',
+    });
+    scene = rSeg.scene;
+
+    const rLine = addGeoObject(scene, {
+      id: 'li_ab_1',
+      kind: 'line',
+      rule: 'line_two_points',
+      parents: [rA.id, rB.id],
+      tool: 'line',
+    });
+    scene = rLine.scene;
+
+    const rCir = addGeoObject(scene, {
+      id: 'ci_a_1',
+      kind: 'circle',
+      rule: 'circle_center_point',
+      parents: [rA.id, rB.id],
+      tool: 'circle_cp',
+    });
+    scene = rCir.scene;
+
+    const rTri = addGeoObject(scene, {
+      id: 'pg_abc_1',
+      kind: 'polygon',
+      rule: 'polygon_vertices',
+      parents: [rA.id, rB.id, rC.id],
+      tool: 'triangle',
+    });
+    scene = rTri.scene;
+
+    const rMid = addGeoObject(scene, {
+      id: 'po_mid_1',
+      kind: 'point',
+      rule: 'midpoint',
+      parents: [rA.id, rB.id],
+      label: 'I',
+      tool: 'midpoint',
+    });
+    scene = rMid.scene;
+
+    expect(getObjectDisplayName2D(scene, scene.objects[rA.id])).toBe('Điểm A');
+    expect(getObjectDisplayName2D(scene, scene.objects[rSeg.id])).toBe('Đoạn thẳng AB');
+    expect(getObjectDisplayName2D(scene, scene.objects[rLine.id])).toBe('Đường thẳng AB');
+    expect(getObjectDisplayName2D(scene, scene.objects[rCir.id])).toBe('Đường tròn (A)');
+    expect(getObjectDisplayName2D(scene, scene.objects[rTri.id])).toBe('Tam giác ABC');
+    expect(getObjectDisplayName2D(scene, scene.objects[rMid.id])).toBe('Trung điểm I');
+    expect(getObjectDescription2D(scene, scene.objects[rMid.id])).toBe('Trung điểm của đoạn thẳng AB');
+
+    // User sets a custom name on the circle
+    scene = renameGeoObject(scene, rCir.id, 'Đường tròn đáy');
+    expect(getObjectDisplayName2D(scene, scene.objects[rCir.id])).toBe('Đường tròn đáy');
+
+    // User renames point A -> M (typing "Điểm M" should normalize cleanly)
+    scene = renameGeoObject(scene, rA.id, 'Điểm M');
+
+    // Internal IDs remain untouched
+    expect(scene.objects[rA.id]).toBeDefined();
+    expect(scene.objects[rSeg.id].parents).toEqual([rA.id, rB.id]);
+
+    // Dependent auto-named objects update automatically
+    expect(getObjectDisplayName2D(scene, scene.objects[rA.id])).toBe('Điểm M');
+    expect(getObjectDisplayName2D(scene, scene.objects[rSeg.id])).toBe('Đoạn thẳng MB');
+    expect(getObjectDisplayName2D(scene, scene.objects[rLine.id])).toBe('Đường thẳng MB');
+    expect(getObjectDisplayName2D(scene, scene.objects[rTri.id])).toBe('Tam giác MBC');
+    expect(getObjectDescription2D(scene, scene.objects[rMid.id])).toBe('Trung điểm của đoạn thẳng MB');
+
+    // Custom name on circle is preserved!
+    expect(getObjectDisplayName2D(scene, scene.objects[rCir.id])).toBe('Đường tròn đáy');
+
+    // Restoring auto name works when passing empty string
+    scene = renameGeoObject(scene, rCir.id, '');
+    expect(getObjectDisplayName2D(scene, scene.objects[rCir.id])).toBe('Đường tròn (M)');
+
+    // Grouping only returns non-empty groups (no 'measure' group here)
+    const groups = groupObjects2D(scene);
+    expect(groups.map((g) => g.key)).toEqual(['point', 'line_segment', 'circle_arc', 'polygon']);
+    expect(groups.every((g) => g.objects.length > 0)).toBe(true);
+
+    // Pending display names never leak raw IDs or missing/deleted IDs
+    const pending = getPendingDisplayNames2D(scene, [rA.id, 'po_mwop1qeb_i', 'undefined', rSeg.id]);
+    expect(pending).toEqual(['Điểm M', 'Đoạn thẳng MB']);
+  });
+});
+

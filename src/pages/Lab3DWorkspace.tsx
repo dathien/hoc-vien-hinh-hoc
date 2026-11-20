@@ -37,8 +37,17 @@ import {
   deleteGeo3DObjectWithDependents,
   movePoint3D,
   recomputeScene3D,
+  renameGeo3DObject,
   updateGeo3DObject,
 } from '../geometry3d/engine3d';
+import {
+  getLogDescription3D,
+  getObjectDescription3D,
+  getObjectDisplayName3D,
+  getPendingDisplayNames3D,
+} from '../geometry3d/naming3d';
+import { GeoObjectIcon, resolveIconKind3D } from '../components/geometry/GeoObjectIcon';
+import { ObjectListPanel3D } from '../components/geometry3d/ObjectListPanel3D';
 import {
   exportScene3DToVectorSvg,
   parseScene3DFromJson,
@@ -1688,7 +1697,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
             <SmartInstructionBar
               toolName={activeToolDef.name}
               instruction={activeToolDef.actionPrompt}
-              selectedLabels={pendingRefs.map((rid) => scene.objects[rid]?.label ?? rid)}
+              selectedLabels={getPendingDisplayNames3D(scene, pendingRefs)}
               bannerMessage={statusBanner}
               canCancel={activeTool !== 'select' || pendingRefs.length > 0}
               onCancel={() => {
@@ -1704,7 +1713,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
           {presentationMode && presentationNotes && presentationStepIdx != null && scene.log[presentationStepIdx] && (
             <div className="px-4 py-2.5 rounded-xl bg-white border border-teal-200 text-base text-slate-900 shadow-xs">
               <span className="font-bold text-teal-700 mr-2">Bước {presentationStepIdx + 1}:</span>
-              {scene.log[presentationStepIdx].description}
+              {getLogDescription3D(scene, scene.log[presentationStepIdx])}
             </div>
           )}
 
@@ -1948,117 +1957,164 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
 
               {rightOpen && (
                 <div className="flex-1 overflow-y-auto p-3.5 space-y-4 text-[14px]">
-                  {/* TAB 1: CONTEXT-SENSITIVE INSPECTOR */}
+                  {/* TAB 1: OBJECT LIST + CONTEXT-SENSITIVE INSPECTOR */}
                   {rightTab === 'inspector' && (
-                    <>
+                    <div className="space-y-4">
+                      {/* Grouped 3D Object List — always accessible */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-[15px] font-bold text-slate-900 dark:text-slate-100">
+                            <Layers className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+                            <span>Đối tượng hình học</span>
+                          </div>
+                          <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {scene.order.length}
+                          </span>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto pr-0.5">
+                          <ObjectListPanel3D
+                            scene={scene}
+                            selectedId={selectedId}
+                            onSelect={(oid) => {
+                              setSelectedId(oid);
+                              viewportRef.current?.focusSelected(oid);
+                            }}
+                            onRename={(oid, nextName) => {
+                              const next = renameGeo3DObject(scene, oid, nextName);
+                              if (next !== scene) commitScene(next);
+                            }}
+                            onToggleVisibility={(oid) =>
+                              commitScene(
+                                updateGeo3DObject(scene, oid, (cur) => ({
+                                  ...cur,
+                                  style: {
+                                    ...cur.style,
+                                    visible: cur.style.visible === false ? true : false,
+                                  },
+                                }))
+                              )
+                            }
+                            onDelete={(oid) => {
+                              commitScene(deleteGeo3DObjectWithDependents(scene, oid));
+                              if (selectedId === oid) setSelectedId(null);
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-200 dark:border-slate-800 pt-3">
                       {!selectedObj ? (
-                        <div className="space-y-4">
-                          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3.5 text-slate-600 dark:text-slate-300">
+                        <div className="space-y-3.5">
+                          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3 text-slate-600 dark:text-slate-300">
                             <p className="text-sm leading-relaxed">
                               Chọn một đối tượng trên bảng vẽ để chỉnh sửa thuộc tính.
                             </p>
                           </div>
 
-                        {/* Smart Label settings */}
-                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2.5">
-                          <div className="font-semibold text-slate-800 dark:text-slate-100">
-                            Quản lý nhãn thông minh
+                          {/* Smart Label settings */}
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2.5">
+                            <div className="font-semibold text-slate-800 dark:text-slate-100">
+                              Quản lý nhãn thông minh
+                            </div>
+                            <label className="block space-y-1">
+                              <span className="text-xs text-slate-500">
+                                Cỡ chữ nhãn: <strong>{labelFontSize}px</strong>
+                              </span>
+                              <input
+                                type="range"
+                                min={15}
+                                max={20}
+                                step={1}
+                                value={labelFontSize}
+                                onChange={(e) => setLabelFontSize(Number(e.target.value))}
+                                className="w-full accent-teal-700"
+                              />
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hideAuxLabels}
+                                onChange={(e) => setHideAuxLabels(e.target.checked)}
+                                className="accent-teal-700"
+                              />
+                              Ẩn nhãn đối tượng phụ trợ
+                            </label>
+                            <p className="text-xs text-slate-500">
+                              Mẹo: Bạn có thể kéo trực tiếp từng nhãn trên khung 3D để dời vị trí hiển thị mà không làm đổi tọa độ 3D.
+                            </p>
                           </div>
-                          <label className="block space-y-1">
-                            <span className="text-xs text-slate-500">
-                              Cỡ chữ nhãn: <strong>{labelFontSize}px</strong>
-                            </span>
-                            <input
-                              type="range"
-                              min={15}
-                              max={20}
-                              step={1}
-                              value={labelFontSize}
-                              onChange={(e) => setLabelFontSize(Number(e.target.value))}
-                              className="w-full accent-teal-700"
-                            />
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={hideAuxLabels}
-                              onChange={(e) => setHideAuxLabels(e.target.checked)}
-                              className="accent-teal-700"
-                            />
-                            Ẩn nhãn đối tượng phụ trợ
-                          </label>
-                          <p className="text-xs text-slate-500">
-                            Mẹo: Bạn có thể kéo trực tiếp từng nhãn trên khung 3D để dời vị trí hiển thị mà không làm đổi tọa độ 3D.
-                          </p>
                         </div>
-
-                        {/* Scene object quick list */}
-                        <div className="space-y-1.5">
-                          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Đối tượng hiện có ({scene.order.length})
-                          </div>
-                          <div className="max-h-56 overflow-y-auto space-y-1">
-                            {scene.order.map((oid) => {
-                              const o = scene.objects[oid];
-                              if (!o) return null;
-                              return (
-                                <div
-                                  key={oid}
-                                  className="flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedId(oid)}
-                                    className="text-left text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1"
-                                  >
-                                    {o.label}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      commitScene(
-                                        updateGeo3DObject(scene, oid, (cur) => ({
-                                          ...cur,
-                                          style: { ...cur.style, visible: cur.style.visible === false ? true : false },
-                                        }))
-                                      )
-                                    }
-                                    className="p-1 text-slate-500 hover:text-teal-700"
-                                    title={o.style.visible !== false ? 'Ẩn đối tượng' : 'Hiện đối tượng'}
-                                  >
-                                    {o.style.visible !== false ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                                  </button>
+                      ) : (
+                        <div className="space-y-3.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <GeoObjectIcon
+                                kind={resolveIconKind3D(selectedObj)}
+                                color={selectedObj.style.color}
+                                className="w-5 h-5"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-[15px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                                  {getObjectDisplayName3D(scene, selectedObj)}
                                 </div>
-                              );
-                            })}
+                                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                  {getObjectDescription3D(scene, selectedObj)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => viewportRef.current?.focusSelected(selectedObj.id)}
+                                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40"
+                                title="Tập trung góc nhìn vào đối tượng này"
+                              >
+                                <Crosshair className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedId(null)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
+                                title="Bỏ chọn"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <input
-                            type="text"
-                            value={selectedObj.label}
-                            onChange={(e) =>
-                              setScene((prev) =>
-                                updateGeo3DObject(prev, selectedObj.id, (o) => ({
-                                  ...o,
-                                  label: e.target.value,
-                                }))
-                              )
-                            }
-                            className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[15px] font-bold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => viewportRef.current?.focusSelected(selectedObj.id)}
-                            className="p-2 rounded-lg border border-slate-200 text-teal-700 hover:bg-teal-50"
-                            title="Tập trung góc nhìn vào đối tượng này"
-                          >
-                            <Crosshair className="w-4 h-4" />
-                          </button>
-                        </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                                {selectedObj.kind === 'point' ? 'Ký hiệu điểm' : 'Tên hiển thị'}
+                              </span>
+                              {selectedObj.kind !== 'point' && selectedObj.customLabel && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    commitScene(renameGeo3DObject(scene, selectedObj.id, ''))
+                                  }
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 dark:text-teal-400 hover:underline"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Tên tự động
+                                </button>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={
+                                selectedObj.kind === 'point'
+                                  ? selectedObj.label
+                                  : getObjectDisplayName3D(scene, selectedObj)
+                              }
+                              onChange={(e) =>
+                                setScene((prev) =>
+                                  renameGeo3DObject(prev, selectedObj.id, e.target.value)
+                                )
+                              }
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-[14px] font-semibold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800"
+                            />
+                          </div>
 
                         {!selectedObj.valid && selectedObj.errorMessage && (
                           <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-sm text-rose-700">
@@ -2382,8 +2438,9 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
                         </div>
                       </div>
                     )}
-                  </>
-                )}
+                      </div>
+                    </div>
+                  )}
 
                 {/* TAB 2: CONSTRUCTION LOG */}
                 {rightTab === 'log' && (
@@ -2415,7 +2472,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
                               }`}
                             >
                               <span className="font-bold text-teal-700 mr-1.5">{i + 1}.</span>
-                              {step.description}
+                              {getLogDescription3D(scene, step)}
                             </button>
                           );
                         })}
@@ -2449,7 +2506,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
                           )
                           .map((o) => (
                             <option key={o.id} value={o.id}>
-                              {o.label} ({o.kind})
+                              {getObjectDisplayName3D(scene, o)}
                             </option>
                           ))}
                       </select>
@@ -2470,7 +2527,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
                           )
                           .map((o) => (
                             <option key={o.id} value={o.id}>
-                              {o.label} ({o.kind})
+                              {getObjectDisplayName3D(scene, o)}
                             </option>
                           ))}
                       </select>

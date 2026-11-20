@@ -1,5 +1,6 @@
 import React from 'react';
 import { ListOrdered, Trash2 } from 'lucide-react';
+import { getLogDescription2D } from '../../geometry/naming2d';
 import type { GeoScene } from '../../geometry/types';
 
 interface ConstructionLogPanelProps {
@@ -51,7 +52,7 @@ export const ConstructionLogPanel: React.FC<ConstructionLogPanelProps> = ({
                     <span className="font-mono-tabular text-xs text-slate-400 mr-1.5">
                       #{idx + 1}
                     </span>
-                    {entry.description}
+                    {getLogDescription2D(scene, entry)}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 font-mono-tabular">
                     {entry.toolLabel} · {entry.costL}L · {entry.costE}E

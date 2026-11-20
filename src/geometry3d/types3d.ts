@@ -127,6 +127,8 @@ export interface Geo3DBase {
   rule: Geo3DRule;
   parents: string[];
   label: string;
+  /** True when the user explicitly typed a custom name; false/undefined allows dynamic auto-naming */
+  customLabel?: boolean;
   constraint: ConstraintKind3D;
   valid: boolean;
   errorMessage?: string;

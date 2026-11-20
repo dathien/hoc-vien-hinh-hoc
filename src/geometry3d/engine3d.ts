@@ -34,6 +34,11 @@ import {
   sub3,
   v3,
 } from './math3d';
+import {
+  getObjectDisplayName3D,
+  isTechnicalCode3D,
+  normalizePointSymbol3D,
+} from './naming3d';
 import type {
   Geo3DCircle,
   Geo3DCrossSection,
@@ -1470,22 +1475,18 @@ export function addGeo3DObject(
 ): { scene: Geo3DScene; id: string } {
   const id = input.id ?? `g3_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   let nextIdx = scene.nextLabelIndex;
-  let label = input.label;
-  if (!label) {
-    if (input.kind === 'point') {
+  const explicitLabel = input.label?.trim();
+  const hasCustomLabel = Boolean(explicitLabel && !isTechnicalCode3D(explicitLabel));
+  let label = '';
+  if (input.kind === 'point') {
+    if (explicitLabel) {
+      label = normalizePointSymbol3D(explicitLabel);
+    } else {
       label = nextPointLabel3D(nextIdx);
       nextIdx += 1;
-    } else if (input.kind === 'plane') {
-      label = `(P_${scene.order.length + 1})`;
-    } else if (input.kind === 'line') {
-      label = `d_${scene.order.length + 1}`;
-    } else if (input.kind === 'vector') {
-      label = `u_${scene.order.length + 1}`;
-    } else if (input.kind === 'cross_section') {
-      label = 'Thiết diện';
-    } else {
-      label = `Obj_${scene.order.length + 1}`;
     }
+  } else if (hasCustomLabel) {
+    label = explicitLabel!;
   }
 
   const baseStyle: Geo3DStyle = {
@@ -1527,6 +1528,7 @@ export function addGeo3DObject(
     rule: input.rule,
     parents: input.parents ?? [],
     label,
+    customLabel: input.kind === 'point' ? Boolean(explicitLabel) : hasCustomLabel,
     constraint,
     valid: true,
     style: baseStyle,
@@ -1626,29 +1628,39 @@ export function addGeo3DObject(
       break;
   }
 
+  const prelimScene: Geo3DScene = {
+    ...scene,
+    objects: { ...scene.objects, [id]: created },
+    order: [...scene.order, id],
+    nextLabelIndex: nextIdx,
+  };
+
+  const computed = recomputeScene3D(prelimScene);
+  const computedObj = computed.objects[id];
+  if (computedObj && computedObj.kind !== 'point' && !computedObj.customLabel) {
+    computed.objects[id] = {
+      ...computedObj,
+      label: getObjectDisplayName3D(computed, computedObj),
+    };
+  }
+  const finalObj = computed.objects[id];
+  const displayName = finalObj ? getObjectDisplayName3D(computed, finalObj) : label;
+
   const log = input.skipLog
-    ? scene.log
+    ? computed.log
     : [
-        ...scene.log,
+        ...computed.log,
         {
-          step: scene.log.length + 1,
+          step: computed.log.length + 1,
           objectId: id,
-          label,
+          label: finalObj?.label || displayName,
           toolName: input.toolName ?? input.kind,
-          description: input.logDescription ?? `Dựng ${label}`,
+          description: input.logDescription ?? `Dựng ${displayName}`,
           timestamp: Date.now(),
         },
       ];
 
-  const nextScene: Geo3DScene = {
-    ...scene,
-    objects: { ...scene.objects, [id]: created },
-    order: [...scene.order, id],
-    log,
-    nextLabelIndex: nextIdx,
-  };
-
-  return { scene: recomputeScene3D(nextScene), id };
+  return { scene: { ...computed, log }, id };
 }
 
 /** Update any object's editable properties and recompute dependent DAG */
@@ -1664,6 +1676,48 @@ export function updateGeo3DObject(
     ...scene,
     objects: { ...scene.objects, [id]: updated },
   });
+}
+
+/**
+ * Rename a 3D geometric object while keeping its internal ID and DAG dependencies intact.
+ * Dependent non-point objects without customLabel automatically refresh their display labels.
+ * Passing an empty string for a non-point object restores its automatic textbook geometric name.
+ */
+export function renameGeo3DObject(
+  scene: Geo3DScene,
+  id: string,
+  rawNewName: string
+): Geo3DScene {
+  const existing = scene.objects[id];
+  if (!existing) return scene;
+
+  const trimmed = rawNewName.trim();
+  const nextObjects: Record<string, Geo3DObject> = { ...scene.objects };
+
+  if (existing.kind === 'point') {
+    if (!trimmed) return scene;
+    const sym = normalizePointSymbol3D(trimmed);
+    if (!sym) return scene;
+    nextObjects[id] = { ...existing, label: sym, customLabel: true };
+  } else if (!trimmed) {
+    nextObjects[id] = { ...existing, customLabel: false };
+  } else {
+    nextObjects[id] = { ...existing, label: trimmed, customLabel: true };
+  }
+
+  const nextScene: Geo3DScene = { ...scene, objects: nextObjects };
+
+  // Refresh dependent auto-named objects while preserving user-defined custom labels
+  for (const oid of nextScene.order) {
+    const o = nextScene.objects[oid];
+    if (!o || o.kind === 'point' || o.customLabel) continue;
+    nextScene.objects[oid] = {
+      ...o,
+      label: getObjectDisplayName3D(nextScene, o),
+    };
+  }
+
+  return nextScene;
 }
 
 /** Move a free or constrained point respecting its degrees of freedom (never breaks constraints!) */

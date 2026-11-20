@@ -111,6 +111,8 @@ export interface GeoObjectBase {
   id: string;
   kind: GeoObjectKind;
   label: string;
+  /** True when the user explicitly typed a custom name; false/undefined allows dynamic auto-naming */
+  customLabel?: boolean;
   parents: string[];
   rule: ConstructionRuleType;
   params?: Record<string, number | string | boolean>;

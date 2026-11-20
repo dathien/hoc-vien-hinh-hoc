@@ -3,8 +3,15 @@ import {
   addGeo3DObject,
   createEmptyScene3D,
   movePoint3D,
+  renameGeo3DObject,
   updateGeo3DObject,
 } from '../src/geometry3d/engine3d';
+import {
+  getObjectDescription3D,
+  getObjectDisplayName3D,
+  getPendingDisplayNames3D,
+  groupObjects3D,
+} from '../src/geometry3d/naming3d';
 import {
   angleBetweenPlanesDeg,
   dihedralAngleDeg,
@@ -395,3 +402,60 @@ describe('18 Levels – 180 Spatial 3D Challenges Integrity & Dynamic Validation
     expect(failures).toEqual([]);
   });
 });
+
+describe('3D Textbook Geometric Naming, Rename Propagation & Grouping', () => {
+  it('generates SGK 3D names, propagates point renames, preserves custom labels & IDs, and survives JSON round-trip', () => {
+    let scene = createEmptyScene3D();
+    const rA = addGeo3DObject(scene, { id: 'g3_pt_a', kind: 'point', rule: 'free_point_3d', label: 'A', position: v3(0, 0, 0) });
+    scene = rA.scene;
+    const rB = addGeo3DObject(scene, { id: 'g3_pt_b', kind: 'point', rule: 'free_point_3d', label: 'B', position: v3(4, 0, 0) });
+    scene = rB.scene;
+    const rC = addGeo3DObject(scene, { id: 'g3_pt_c', kind: 'point', rule: 'free_point_3d', label: 'C', position: v3(0, 4, 0) });
+    scene = rC.scene;
+
+    const rSeg = addGeo3DObject(scene, { id: 'g3_seg_ab', kind: 'segment', rule: 'segment_3d', parents: [rA.id, rB.id] });
+    scene = rSeg.scene;
+    const rPl = addGeo3DObject(scene, { id: 'g3_pl_abc', kind: 'plane', rule: 'plane_three_points', parents: [rA.id, rB.id, rC.id] });
+    scene = rPl.scene;
+    const rVec = addGeo3DObject(scene, { id: 'g3_vec_ab', kind: 'vector', rule: 'vector_two_points', parents: [rA.id, rB.id] });
+    scene = rVec.scene;
+    const rCube = addGeo3DObject(scene, { id: 'g3_cube', kind: 'solid', rule: 'solid_cube', solidType: 'cube', params: { a: 3 } });
+    scene = rCube.scene;
+
+    expect(getObjectDisplayName3D(scene, scene.objects[rA.id])).toBe('Điểm A');
+    expect(getObjectDisplayName3D(scene, scene.objects[rSeg.id])).toBe('Đoạn thẳng AB');
+    expect(getObjectDisplayName3D(scene, scene.objects[rPl.id])).toBe('Mặt phẳng (ABC)');
+    expect(getObjectDisplayName3D(scene, scene.objects[rVec.id])).toBe('Vectơ AB');
+    expect(getObjectDisplayName3D(scene, scene.objects[rCube.id])).toBe('Hình lập phương');
+
+    // Custom label on vector must be preserved across point rename
+    scene = renameGeo3DObject(scene, rVec.id, 'Vectơ chỉ phương u');
+    scene = renameGeo3DObject(scene, rA.id, 'M');
+
+    expect(scene.objects[rSeg.id].parents).toEqual([rA.id, rB.id]);
+    expect(getObjectDisplayName3D(scene, scene.objects[rA.id])).toBe('Điểm M');
+    expect(getObjectDisplayName3D(scene, scene.objects[rSeg.id])).toBe('Đoạn thẳng MB');
+    expect(getObjectDisplayName3D(scene, scene.objects[rPl.id])).toBe('Mặt phẳng (MBC)');
+    expect(getObjectDisplayName3D(scene, scene.objects[rVec.id])).toBe('Vectơ chỉ phương u');
+    expect(getObjectDescription3D(scene, scene.objects[rPl.id])).toBe('Đi qua ba điểm M, B, C');
+
+    // Only non-empty groups returned
+    const groups = groupObjects3D(scene);
+    expect(groups.map((g) => g.key)).toEqual(['point', 'line_segment', 'vector', 'plane', 'solid']);
+    expect(groups.every((g) => g.objects.length > 0)).toBe(true);
+
+    // Pending display names never leak raw IDs
+    expect(getPendingDisplayNames3D(scene, [rA.id, 'g3_nonexistent_123', rPl.id])).toEqual([
+      'Điểm M',
+      'Mặt phẳng (MBC)',
+    ]);
+
+    // JSON round-trip preserves IDs, customLabel, and names
+    const json = serializeScene3DToJson(scene, 'Test 3D Naming');
+    const parsed = parseScene3DFromJson(json);
+    expect(parsed.valid).toBe(true);
+    expect(getObjectDisplayName3D(parsed.scene!, parsed.scene!.objects[rSeg.id])).toBe('Đoạn thẳng MB');
+    expect(getObjectDisplayName3D(parsed.scene!, parsed.scene!.objects[rVec.id])).toBe('Vectơ chỉ phương u');
+  });
+});
+

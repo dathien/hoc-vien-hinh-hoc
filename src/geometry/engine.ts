@@ -27,6 +27,12 @@ import {
   translatePoint,
 } from './math';
 import { TOOL_CATALOG } from './tools';
+import {
+  buildAutoLabel2D,
+  getObjectDisplayName2D,
+  isTechnicalCode,
+  normalizePointSymbol,
+} from './naming2d';
 import type {
   ConstructionLogEntry,
   ConstructionRuleType,
@@ -634,11 +640,16 @@ export function addGeoObject(
 ): { scene: GeoScene; id: string } {
   const next = cloneScene(scene);
   const id = spec.id ?? genGeoId(spec.kind.slice(0, 2));
-  const label =
-    spec.label ??
-    (spec.kind === 'point'
-      ? nextPointLabel(next)
-      : `${spec.kind.slice(0, 1).toUpperCase()}${next.order.length + 1}`);
+  const explicitLabel = spec.label?.trim();
+  const hasCustomLabel = Boolean(explicitLabel && !isTechnicalCode(explicitLabel));
+  const initialLabel =
+    spec.kind === 'point'
+      ? explicitLabel
+        ? normalizePointSymbol(explicitLabel)
+        : nextPointLabel(next)
+      : hasCustomLabel
+        ? explicitLabel!
+        : '';
   const toolInfo = spec.tool ? TOOL_CATALOG[spec.tool] : undefined;
   const costL = spec.style?.isGiven ? 0 : (spec.costL ?? toolInfo?.costL ?? 0);
   const costE = spec.style?.isGiven ? 0 : (spec.costE ?? toolInfo?.costE ?? 0);
@@ -646,7 +657,8 @@ export function addGeoObject(
   const base = {
     id,
     kind: spec.kind,
-    label,
+    label: initialLabel,
+    customLabel: spec.kind === 'point' ? Boolean(explicitLabel) : hasCustomLabel,
     parents: spec.parents,
     rule: spec.rule,
     params: spec.params,
@@ -710,13 +722,19 @@ export function addGeoObject(
   next.order.push(id);
   recomputeScene(next);
 
+  const createdObj = next.objects[id];
+  if (createdObj && createdObj.kind !== 'point' && !createdObj.customLabel) {
+    createdObj.label = buildAutoLabel2D(next, createdObj);
+  }
+  const finalDisplayName = createdObj ? getObjectDisplayName2D(next, createdObj) : initialLabel;
+
   if (!spec.style?.isGiven && !spec.skipLog && spec.tool) {
     const entry: ConstructionLogEntry = {
       id: genGeoId('log'),
       stepNumber: next.log.length + 1,
       tool: spec.tool,
       toolLabel: toolInfo?.name ?? spec.tool,
-      description: spec.logDescription ?? `${toolInfo?.name ?? spec.tool} (${label})`,
+      description: spec.logDescription ?? `Dựng ${finalDisplayName}`,
       usedObjectIds: [...spec.parents],
       createdObjectIds: [id],
       costL,
@@ -728,6 +746,45 @@ export function addGeoObject(
   }
 
   return { scene: next, id };
+}
+
+/**
+ * Rename a 2D geometric object while keeping its internal ID and DAG dependencies intact.
+ * - Points normalize inputs like "Điểm M" -> "M" for canvas display while showing "Điểm M" in lists.
+ * - Dependent non-point objects that do not have a user-defined customLabel automatically refresh their labels.
+ * - Passing an empty string for a non-point object restores its automatic textbook geometric name.
+ */
+export function renameGeoObject(scene: GeoScene, id: string, rawNewName: string): GeoScene {
+  const existing = scene.objects[id];
+  if (!existing) return scene;
+
+  const next = cloneScene(scene);
+  const target = next.objects[id];
+  if (!target) return scene;
+
+  const trimmed = rawNewName.trim();
+  if (target.kind === 'point') {
+    if (!trimmed) return scene;
+    const sym = normalizePointSymbol(trimmed);
+    if (!sym) return scene;
+    target.label = sym;
+    target.customLabel = true;
+  } else if (!trimmed) {
+    target.customLabel = false;
+    target.label = buildAutoLabel2D(next, target);
+  } else {
+    target.label = trimmed;
+    target.customLabel = true;
+  }
+
+  // Refresh dependent auto-named objects in topological order while preserving custom names
+  for (const oid of next.order) {
+    const o = next.objects[oid];
+    if (!o || o.kind === 'point' || o.customLabel) continue;
+    o.label = buildAutoLabel2D(next, o);
+  }
+
+  return next;
 }
 
 export interface SnapResult {

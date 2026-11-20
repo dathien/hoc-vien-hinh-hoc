@@ -1,30 +1,27 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Check,
+  ChevronDown,
   ChevronRight,
   Eye,
   EyeOff,
   Layers,
   Pencil,
+  RotateCcw,
   Sliders,
   Trash2,
   X,
 } from 'lucide-react';
+import {
+  getObjectDescription2D,
+  getObjectDisplayName2D,
+  groupObjects2D,
+  type ObjectGroupKey2D,
+} from '../../geometry/naming2d';
 import type { GeoObject, GeoScene } from '../../geometry/types';
+import { GeoObjectIcon, resolveIconKind2D } from './GeoObjectIcon';
 
 const COLOR_SWATCHES = ['#0F766E', '#0284C7', '#7C3AED', '#D97706', '#DC2626', '#172033'];
-
-const KIND_LABEL: Record<GeoObject['kind'], string> = {
-  point: 'Điểm',
-  line: 'Đường thẳng',
-  segment: 'Đoạn thẳng',
-  ray: 'Tia',
-  circle: 'Đường tròn',
-  arc: 'Cung tròn',
-  polygon: 'Đa giác',
-  angle_measure: 'Đo góc',
-  length_measure: 'Đo độ dài',
-};
 
 interface ObjectPropertiesPanel2DProps {
   scene: GeoScene;
@@ -51,21 +48,25 @@ export const ObjectPropertiesPanel2D: React.FC<ObjectPropertiesPanel2DProps> = (
   open,
   onClose,
 }) => {
-  const [width, setWidth] = useState(296);
+  const [width, setWidth] = useState(312);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Partial<Record<ObjectGroupKey2D, boolean>>>({});
   const dragStartRef = useRef<{ x: number; w: number } | null>(null);
 
-  const objects = useMemo(
-    () =>
-      scene.order
-        .map((id) => scene.objects[id])
-        .filter((o): o is GeoObject => Boolean(o)),
-    [scene]
+  const groups = useMemo(() => groupObjects2D(scene), [scene]);
+  const totalObjects = useMemo(
+    () => groups.reduce((acc, g) => acc + g.objects.length, 0),
+    [groups]
   );
 
   const selectedObj = selectedId ? scene.objects[selectedId] ?? null : null;
+  const selectedDisplayName = selectedObj ? getObjectDisplayName2D(scene, selectedObj) : '';
+
+  const toggleGroup = (key: ObjectGroupKey2D) => {
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const getDependentCount = (targetId: string): number => {
     const visited = new Set<string>([targetId]);
@@ -90,7 +91,7 @@ export const ObjectPropertiesPanel2D: React.FC<ObjectPropertiesPanel2DProps> = (
     const onMove = (ev: MouseEvent) => {
       if (!dragStartRef.current) return;
       const delta = dragStartRef.current.x - ev.clientX;
-      setWidth(Math.max(240, Math.min(380, dragStartRef.current.w + delta)));
+      setWidth(Math.max(260, Math.min(420, dragStartRef.current.w + delta)));
     };
     const onUp = () => {
       dragStartRef.current = null;
@@ -121,10 +122,13 @@ export const ObjectPropertiesPanel2D: React.FC<ObjectPropertiesPanel2DProps> = (
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Panel Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-1.5 text-[14px] font-bold text-slate-800 dark:text-slate-100">
-            <Layers className="w-4 h-4 text-teal-700 dark:text-teal-400" />
-            Đối tượng &amp; Thuộc tính
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-slate-100">
+            <Layers className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+            <span>Đối tượng hình học</span>
+            <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              {totalObjects}
+            </span>
           </div>
           <button
             type="button"
@@ -136,160 +140,208 @@ export const ObjectPropertiesPanel2D: React.FC<ObjectPropertiesPanel2DProps> = (
           </button>
         </div>
 
-        {/* SECTION A: Object List */}
-        <div className="flex-1 min-h-[160px] overflow-y-auto p-2.5 space-y-1 border-b border-slate-200 dark:border-slate-800">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-1">
-            Danh sách đối tượng ({objects.length})
-          </div>
-
-          {objects.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400 px-2 py-4 text-center">
+        {/* SECTION A: Grouped Object List (only non-empty categories shown) */}
+        <div className="flex-1 min-h-[160px] overflow-y-auto p-2.5 space-y-2.5 border-b border-slate-200 dark:border-slate-800">
+          {groups.length === 0 ? (
+            <p className="text-[14px] text-slate-500 dark:text-slate-400 px-2 py-6 text-center leading-relaxed">
               Bảng vẽ đang trống. Chọn công cụ bên trái để bắt đầu dựng hình.
             </p>
           ) : (
-            objects.map((obj) => {
-              const isSelected = obj.id === selectedId;
-              const isFree = obj.rule === 'free_point';
-              const depCount = pendingDeleteId === obj.id ? getDependentCount(obj.id) : 0;
-
+            groups.map((grp) => {
+              const isCollapsed = Boolean(collapsedGroups[grp.key]);
               return (
-                <div
-                  key={obj.id}
-                  className={`rounded-xl border px-2.5 py-2 transition-colors ${
-                    isSelected
-                      ? 'border-teal-500 bg-teal-50/70 dark:bg-teal-950/35'
-                      : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onSelect(obj.id)}
-                      className="flex items-center gap-2 min-w-0 flex-1 text-left"
-                    >
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: obj.style.color }}
-                      />
-                      <div className="min-w-0">
-                        {renamingId === obj.id ? (
+                <section key={grp.key} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(grp.key)}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[13px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/70 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {isCollapsed ? (
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                      )}
+                      <span>{grp.title}</span>
+                    </span>
+                    <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-400">
+                      {grp.objects.length}
+                    </span>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div className="space-y-1 pl-0.5">
+                      {grp.objects.map((obj) => {
+                        const isSelected = obj.id === selectedId;
+                        const displayName = getObjectDisplayName2D(scene, obj);
+                        const description = getObjectDescription2D(scene, obj);
+                        const depCount = pendingDeleteId === obj.id ? getDependentCount(obj.id) : 0;
+
+                        return (
                           <div
-                            className="flex items-center gap-1"
-                            onClick={(e) => e.stopPropagation()}
+                            key={obj.id}
+                            className={`rounded-xl border px-2.5 py-2 transition-colors ${
+                              isSelected
+                                ? 'border-teal-500 bg-teal-50/75 dark:bg-teal-950/35'
+                                : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                            }`}
                           >
-                            <input
-                              type="text"
-                              value={renameDraft}
-                              autoFocus
-                              onChange={(e) => setRenameDraft(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  if (renameDraft.trim()) onUpdateLabel(obj.id, renameDraft.trim());
-                                  setRenamingId(null);
-                                } else if (e.key === 'Escape') {
-                                  setRenamingId(null);
-                                }
-                              }}
-                              className="w-24 px-1.5 py-0.5 text-sm rounded border border-teal-500 bg-white dark:bg-slate-800"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (renameDraft.trim()) onUpdateLabel(obj.id, renameDraft.trim());
-                                setRenamingId(null);
-                              }}
-                              className="p-1 text-teal-700"
-                              title="Lưu tên"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="text-[14px] font-semibold text-slate-900 dark:text-slate-100 truncate">
-                            {obj.label || KIND_LABEL[obj.kind]}
-                          </div>
-                        )}
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {KIND_LABEL[obj.kind]} · {isFree ? 'Tự do' : 'Phụ thuộc'}
-                        </div>
-                      </div>
-                    </button>
+                            <div className="flex items-start justify-between gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onSelect(obj.id)}
+                                className="flex items-start gap-2.5 min-w-0 flex-1 text-left"
+                              >
+                                <div className="mt-0.5 shrink-0">
+                                  <GeoObjectIcon
+                                    kind={resolveIconKind2D(obj)}
+                                    color={obj.style.color}
+                                    className="w-5 h-5"
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  {renamingId === obj.id ? (
+                                    <div
+                                      className="flex items-center gap-1"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <input
+                                        type="text"
+                                        value={renameDraft}
+                                        autoFocus
+                                        onChange={(e) => setRenameDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            onUpdateLabel(obj.id, renameDraft.trim());
+                                            setRenamingId(null);
+                                          } else if (e.key === 'Escape') {
+                                            setRenamingId(null);
+                                          }
+                                        }}
+                                        placeholder={
+                                          obj.kind === 'point'
+                                            ? 'Nhập ký hiệu điểm (vd: M)'
+                                            : 'Để trống để dùng tên tự động'
+                                        }
+                                        className="w-full min-w-0 px-2 py-1 text-[14px] rounded border border-teal-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onUpdateLabel(obj.id, renameDraft.trim());
+                                          setRenamingId(null);
+                                        }}
+                                        className="p-1 text-teal-700 dark:text-teal-400 shrink-0"
+                                        title="Lưu tên"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div
+                                      className={`text-[15px] font-semibold leading-snug break-words ${
+                                        obj.style.visible
+                                          ? 'text-slate-900 dark:text-slate-100'
+                                          : 'text-slate-400 dark:text-slate-500 line-through'
+                                      }`}
+                                    >
+                                      {displayName}
+                                    </div>
+                                  )}
+                                  {description && (
+                                    <div className="text-[12.5px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5 break-words">
+                                      {description}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
 
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenamingId(obj.id);
-                          setRenameDraft(obj.label);
-                        }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700"
-                        title="Đổi tên"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onUpdateStyle(obj.id, { visible: !obj.style.visible })}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700"
-                        title={obj.style.visible ? 'Ẩn đối tượng' : 'Hiện đối tượng'}
-                      >
-                        {obj.style.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 text-amber-600" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const deps = getDependentCount(obj.id);
-                          if (deps > 0) {
-                            setPendingDeleteId(obj.id);
-                          } else {
-                            onDelete(obj.id);
-                          }
-                        }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                        title="Xóa đối tượng"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRenamingId(obj.id);
+                                    setRenameDraft(
+                                      obj.kind === 'point' ? obj.label : displayName
+                                    );
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700"
+                                  title="Đổi tên đối tượng"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onUpdateStyle(obj.id, { visible: !obj.style.visible })}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700"
+                                  title={obj.style.visible ? 'Ẩn đối tượng' : 'Hiện đối tượng'}
+                                >
+                                  {obj.style.visible ? (
+                                    <Eye className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const deps = getDependentCount(obj.id);
+                                    if (deps > 0) {
+                                      setPendingDeleteId(obj.id);
+                                    } else {
+                                      onDelete(obj.id);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                  title="Xóa đối tượng"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
 
-                  {/* Inline delete confirmation when dependent objects exist */}
-                  {pendingDeleteId === obj.id && (
-                    <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 rounded-lg p-2 text-xs space-y-1.5">
-                      <div className="text-rose-800 dark:text-rose-200 font-medium">
-                        Xóa <strong>{obj.label}</strong> sẽ xóa thêm {depCount} đối tượng phụ thuộc.
-                      </div>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setPendingDeleteId(null)}
-                          className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200"
-                        >
-                          Hủy
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onDelete(obj.id);
-                            setPendingDeleteId(null);
-                          }}
-                          className="px-2 py-1 rounded bg-rose-600 text-white font-semibold"
-                        >
-                          Xác nhận xóa
-                        </button>
-                      </div>
+                            {/* Inline delete confirmation when dependent objects exist */}
+                            {pendingDeleteId === obj.id && (
+                              <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 rounded-lg p-2 text-xs space-y-1.5">
+                                <div className="text-rose-800 dark:text-rose-200 font-medium leading-snug">
+                                  Xóa <strong>{displayName}</strong> sẽ xóa thêm {depCount} đối tượng phụ thuộc.
+                                </div>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPendingDeleteId(null)}
+                                    className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                                  >
+                                    Hủy
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onDelete(obj.id);
+                                      setPendingDeleteId(null);
+                                    }}
+                                    className="px-2 py-1 rounded bg-rose-600 text-white font-semibold"
+                                  >
+                                    Xác nhận xóa
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-                </div>
+                </section>
               );
             })
           )}
         </div>
 
         {/* SECTION B: Contextual Object Properties */}
-        <div className="p-3 overflow-y-auto max-h-[52%] space-y-3 bg-slate-50/50 dark:bg-slate-950/40">
+        <div className="p-3 overflow-y-auto max-h-[50%] space-y-3 bg-slate-50/50 dark:bg-slate-950/40">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[13px] font-bold text-slate-800 dark:text-slate-100">
+            <div className="flex items-center gap-1.5 text-[14px] font-bold text-slate-800 dark:text-slate-100">
               <Sliders className="w-4 h-4 text-teal-700 dark:text-teal-400" />
               Thuộc tính đối tượng
             </div>
@@ -306,21 +358,57 @@ export const ObjectPropertiesPanel2D: React.FC<ObjectPropertiesPanel2DProps> = (
           </div>
 
           {!selectedObj ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed py-2">
+            <p className="text-[14px] text-slate-500 dark:text-slate-400 leading-relaxed py-1">
               Chọn một đối tượng trên bảng vẽ để chỉnh sửa thuộc tính.
             </p>
           ) : (
             <div className="space-y-3 text-sm">
-              {/* Name */}
-              <label className="block space-y-1">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Tên đối tượng</span>
-                <input
-                  type="text"
-                  value={selectedObj.label}
-                  onChange={(e) => onUpdateLabel(selectedObj.id, e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm"
+              {/* Selected display banner */}
+              <div className="flex items-center gap-2 rounded-lg bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-2.5 py-2">
+                <GeoObjectIcon
+                  kind={resolveIconKind2D(selectedObj)}
+                  color={selectedObj.style.color}
+                  className="w-5 h-5"
                 />
-              </label>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    {selectedDisplayName}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {getObjectDescription2D(scene, selectedObj)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Name */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="prop-2d-name"
+                    className="text-xs font-semibold text-slate-600 dark:text-slate-400"
+                  >
+                    {selectedObj.kind === 'point' ? 'Ký hiệu điểm' : 'Tên hiển thị'}
+                  </label>
+                  {selectedObj.kind !== 'point' && selectedObj.customLabel && (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateLabel(selectedObj.id, '')}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 dark:text-teal-400 hover:underline"
+                      title="Khôi phục tên hình học tự động theo các điểm thành phần"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Tên tự động
+                    </button>
+                  )}
+                </div>
+                <input
+                  id="prop-2d-name"
+                  type="text"
+                  value={selectedObj.kind === 'point' ? selectedObj.label : selectedDisplayName}
+                  onChange={(e) => onUpdateLabel(selectedObj.id, e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[14px]"
+                />
+              </div>
 
               {/* Color Swatches */}
               <div className="space-y-1">

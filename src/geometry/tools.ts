@@ -130,7 +130,11 @@ export const TOOL_CATALOG: Record<ToolId, ToolCostInfo> = {
     costL: 1,
     costE: 1,
     elementaryBasis: 'Dùng compa vẽ cung tròn tâm O từ điểm đầu đến tia kết thúc (1 bước dựng · 1 phép dựng cơ bản)',
-    promptSteps: ['Chọn tâm cung tròn', 'Chọn điểm đầu cung', 'Chọn điểm xác định hướng kết thúc cung'],
+    promptSteps: [
+      'Bước 1/3: Chọn tâm cung tròn',
+      'Bước 2/3: Chọn điểm đầu của cung tròn',
+      'Bước 3/3: Chọn điểm xác định hướng kết thúc cung tròn',
+    ],
     isEuclideanBasic: true,
   },
 

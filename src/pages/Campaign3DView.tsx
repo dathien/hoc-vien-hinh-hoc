@@ -32,6 +32,7 @@ import {
 } from '../geometry3d/challenges3d';
 import { addGeo3DObject, movePoint3D } from '../geometry3d/engine3d';
 import { v3 } from '../geometry3d/math3d';
+import { getObjectDisplayName3D, getPendingDisplayNames3D } from '../geometry3d/naming3d';
 import { getTool3DDef } from '../geometry3d/tools3d';
 import type { Geo3DRule, Geo3DScene, Solid3DType, Tool3DId, Vec3 } from '../geometry3d/types3d';
 import {
@@ -556,6 +557,14 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
     window.setTimeout(() => setBanner((cur) => (cur === msg ? null : cur)), 3400);
   }, []);
 
+  useEffect(() => {
+    setPendingRefs((prev) => {
+      if (prev.length === 0) return prev;
+      const valid = prev.filter((id) => Boolean(scene.objects[id]));
+      return valid.length === prev.length ? prev : valid;
+    });
+  }, [scene]);
+
   const givenObjectsSummary = useMemo(() => {
     const init = challenge.buildInitialScene();
     const pts: string[] = [];
@@ -566,9 +575,9 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
       const o = init.objects[id];
       if (!o || !o.style.isGiven) continue;
       if (o.kind === 'point') pts.push(o.label);
-      else if (o.kind === 'line' || o.kind === 'segment') lines.push(o.label);
-      else if (o.kind === 'plane') planes.push(o.label);
-      else if (o.kind === 'solid') solids.push(o.label);
+      else if (o.kind === 'line' || o.kind === 'segment') lines.push(getObjectDisplayName3D(init, o));
+      else if (o.kind === 'plane') planes.push(getObjectDisplayName3D(init, o));
+      else if (o.kind === 'solid') solids.push(getObjectDisplayName3D(init, o));
     }
     const parts: string[] = [];
     if (solids.length > 0) parts.push(`Hình khối: ${solids.join(', ')}`);
@@ -644,10 +653,10 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
       else finish(addGeo3DObject(scene, { kind: 'point', rule: 'midpoint_3d', parents: [refs[0], refs[1]], label: `M${userStepCount + 1}` }));
     } else if (activeTool === 'segment' || activeTool === 'line' || activeTool === 'ray' || activeTool === 'vector') {
       if (refs.length < 2) setPendingRefs(refs);
-      else if (activeTool === 'segment') finish(addGeo3DObject(scene, { kind: 'segment', rule: 'segment_3d', parents: [refs[0], refs[1]], label: `s${userStepCount + 1}` }));
-      else if (activeTool === 'line') finish(addGeo3DObject(scene, { kind: 'line', rule: 'line_two_points', parents: [refs[0], refs[1]], label: `d${userStepCount + 1}` }));
-      else if (activeTool === 'ray') finish(addGeo3DObject(scene, { kind: 'ray', rule: 'ray_3d', parents: [refs[0], refs[1]], label: `r${userStepCount + 1}` }));
-      else finish(addGeo3DObject(scene, { kind: 'vector', rule: 'vector_two_points', parents: [refs[0], refs[1]], label: `v${userStepCount + 1}` }));
+      else if (activeTool === 'segment') finish(addGeo3DObject(scene, { kind: 'segment', rule: 'segment_3d', parents: [refs[0], refs[1]] }));
+      else if (activeTool === 'line') finish(addGeo3DObject(scene, { kind: 'line', rule: 'line_two_points', parents: [refs[0], refs[1]] }));
+      else if (activeTool === 'ray') finish(addGeo3DObject(scene, { kind: 'ray', rule: 'ray_3d', parents: [refs[0], refs[1]] }));
+      else finish(addGeo3DObject(scene, { kind: 'vector', rule: 'vector_two_points', parents: [refs[0], refs[1]] }));
     } else if (activeTool === 'line_dir_vector') {
       if (clicked.kind === 'point') {
         setLineDirOriginId(clickedId);
@@ -657,13 +666,13 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
       }
     } else if (activeTool === 'plane_3pts') {
       if (refs.length < 3) setPendingRefs(refs);
-      else finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_three_points', parents: refs, label: `(P${userStepCount + 1})` }));
+      else finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_three_points', parents: refs }));
     } else if (activeTool === 'plane_2lines_inter' || activeTool === 'plane_2lines_para') {
       if (refs.length < 2) setPendingRefs(refs);
-      else finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_two_lines', parents: [refs[0], refs[1]], label: `(P${userStepCount + 1})` }));
+      else finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_two_lines', parents: [refs[0], refs[1]] }));
     } else if (activeTool === 'polygon') {
       if (pendingRefs.length >= 3 && clickedId === pendingRefs[0]) {
-        finish(addGeo3DObject(scene, { kind: 'polygon', rule: 'polygon_3d', parents: pendingRefs, label: `ĐG${userStepCount + 1}` }));
+        finish(addGeo3DObject(scene, { kind: 'polygon', rule: 'polygon_3d', parents: pendingRefs }));
       } else if (!pendingRefs.includes(clickedId)) setPendingRefs(refs);
     } else if (activeTool === 'point_on_line') {
       finish(addGeo3DObject(scene, { kind: 'point', rule: 'point_on_line', parents: [clickedId], position: hitPoint, label: `K${userStepCount + 1}` }));
@@ -676,39 +685,39 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
       else {
         const ptId = scene.objects[refs[0]]?.kind === 'point' ? refs[0] : refs[1];
         const lId = ptId === refs[0] ? refs[1] : refs[0];
-        finish(addGeo3DObject(scene, { kind: 'line', rule: 'line_parallel_point', parents: [ptId, lId], label: `d${userStepCount + 1}` }));
+        finish(addGeo3DObject(scene, { kind: 'line', rule: 'line_parallel_point', parents: [ptId, lId] }));
       }
     } else if (activeTool === 'perp_line_plane') {
       if (refs.length < 2) setPendingRefs(refs);
       else {
         const ptId = scene.objects[refs[0]]?.kind === 'point' ? refs[0] : refs[1];
         const pId = ptId === refs[0] ? refs[1] : refs[0];
-        finish(addGeo3DObject(scene, { kind: 'line', rule: 'line_perp_plane', parents: [ptId, pId], label: `d${userStepCount + 1}` }));
+        finish(addGeo3DObject(scene, { kind: 'line', rule: 'line_perp_plane', parents: [ptId, pId] }));
       }
     } else if (activeTool === 'plane_parallel') {
       if (refs.length < 2) setPendingRefs(refs);
       else {
         const ptId = scene.objects[refs[0]]?.kind === 'point' ? refs[0] : refs[1];
         const pId = ptId === refs[0] ? refs[1] : refs[0];
-        finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_parallel_point', parents: [ptId, pId], label: `(Q${userStepCount + 1})` }));
+        finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_parallel_point', parents: [ptId, pId] }));
       }
     } else if (activeTool === 'plane_perp_line') {
       if (refs.length < 2) setPendingRefs(refs);
       else {
         const ptId = scene.objects[refs[0]]?.kind === 'point' ? refs[0] : refs[1];
         const lId = ptId === refs[0] ? refs[1] : refs[0];
-        finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_perp_line', parents: [ptId, lId], label: `(Q${userStepCount + 1})` }));
+        finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_perp_line', parents: [ptId, lId] }));
       }
     } else if (activeTool === 'plane_line_pt') {
       if (refs.length < 2) setPendingRefs(refs);
       else {
         const lId = scene.objects[refs[0]]?.kind === 'line' || scene.objects[refs[0]]?.kind === 'segment' ? refs[0] : refs[1];
         const ptId = lId === refs[0] ? refs[1] : refs[0];
-        finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_line_point', parents: [lId, ptId], label: `(P${userStepCount + 1})` }));
+        finish(addGeo3DObject(scene, { kind: 'plane', rule: 'plane_line_point', parents: [lId, ptId] }));
       }
     } else if (activeTool === 'intersect_pp') {
       if (refs.length < 2) setPendingRefs(refs);
-      else finish(addGeo3DObject(scene, { kind: 'line', rule: 'intersect_plane_plane', parents: [refs[0], refs[1]], label: `gt${userStepCount + 1}` }));
+      else finish(addGeo3DObject(scene, { kind: 'line', rule: 'intersect_plane_plane', parents: [refs[0], refs[1]] }));
     } else if (activeTool === 'intersect_lp') {
       if (refs.length < 2) setPendingRefs(refs);
       else {
@@ -734,13 +743,13 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
       }
     } else if (activeTool === 'common_perp') {
       if (refs.length < 2) setPendingRefs(refs);
-      else finish(addGeo3DObject(scene, { kind: 'line', rule: 'common_perpendicular', parents: [refs[0], refs[1]], label: `vc${userStepCount + 1}` }));
+      else finish(addGeo3DObject(scene, { kind: 'line', rule: 'common_perpendicular', parents: [refs[0], refs[1]] }));
     } else if (activeTool === 'cross_section') {
       if (refs.length < 2) setPendingRefs(refs);
       else {
         const sId = scene.objects[refs[0]]?.kind === 'solid' ? refs[0] : refs[1];
         const pId = sId === refs[0] ? refs[1] : refs[0];
-        finish(addGeo3DObject(scene, { kind: 'cross_section', rule: 'cross_section_solid_plane', parents: [sId, pId], label: 'Thiết diện' }));
+        finish(addGeo3DObject(scene, { kind: 'cross_section', rule: 'cross_section_solid_plane', parents: [sId, pId] }));
       }
     } else if (activeTool === 'measure_dihedral') {
       if (refs.length < 4) setPendingRefs(refs);
@@ -949,16 +958,21 @@ const Challenge3DWorkspace: React.FC<Challenge3DWorkspaceProps> = ({
           </div>
 
           {/* Single-line Contextual Instruction Bar */}
-          <div className="px-3.5 py-2 rounded-xl bg-sky-50/90 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800 text-sm text-sky-950 dark:text-sky-100 flex items-center justify-between gap-2">
-            <span className="truncate font-medium">
-              {banner || getTool3DDef(activeTool).actionPrompt}
-            </span>
-            {pendingRefs.length > 0 && (
-              <span className="text-xs font-bold shrink-0 px-2 py-0.5 rounded bg-white dark:bg-slate-800 text-teal-800 dark:text-teal-300 border border-sky-200 dark:border-sky-700">
-                Đã chọn: {pendingRefs.map((id) => scene.objects[id]?.label ?? id).join(' → ')}
-              </span>
-            )}
-          </div>
+          {(() => {
+            const pendingLabels = getPendingDisplayNames3D(scene, pendingRefs);
+            return (
+              <div className="px-3.5 py-2 rounded-xl bg-sky-50/90 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800 text-[15px] text-sky-950 dark:text-sky-100 flex items-center justify-between gap-2">
+                <span className="truncate font-medium">
+                  {banner || getTool3DDef(activeTool).actionPrompt}
+                </span>
+                {pendingLabels.length > 0 && (
+                  <span className="text-[13px] font-bold shrink-0 px-2.5 py-0.5 rounded bg-white dark:bg-slate-800 text-teal-800 dark:text-teal-300 border border-sky-200 dark:border-sky-700">
+                    Đã chọn: {pendingLabels.join(' → ')}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Interactive 3D Canvas */}
           <div className={isFullscreen ? 'h-[66vh] min-h-[480px]' : 'h-[540px]'}>

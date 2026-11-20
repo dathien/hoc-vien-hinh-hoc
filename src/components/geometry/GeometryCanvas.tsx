@@ -218,6 +218,15 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
     setPendingIds([]);
   }, [activeTool]);
 
+  // Prune stale pending IDs if scene changes (e.g. Undo / Reset / Delete)
+  useEffect(() => {
+    setPendingIds((prev) => {
+      if (prev.length === 0) return prev;
+      const valid = prev.filter((id) => Boolean(scene.objects[id]));
+      return valid.length === prev.length ? prev : valid;
+    });
+  }, [scene]);
+
   useEffect(() => {
     onPendingChange?.(pendingIds);
   }, [pendingIds, onPendingChange]);
@@ -808,7 +817,7 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
           kind: 'segment',
           rule: 'segment_two_points',
           parents: [p1, mid.id],
-          tool: 'segment',
+          tool: 'median',
           costL: 1,
           costE: 1,
           style: { color: '#0F766E' },
