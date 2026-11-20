@@ -266,14 +266,14 @@ export const CampaignPage: React.FC = () => {
             onClick={() => setCampaignDimension('3d')}
             className="px-4 py-2.5 rounded-xl bg-teal-700 text-white text-[15px] font-semibold shadow-xs"
           >
-            Thử thách hình học không gian 3D ({stats3D.completedCount}/60 · ★ {stats3D.totalStars}/180)
+            Thử thách hình học không gian 3D ({stats3D.completedCount}/{stats3D.totalChallenges} · ★ {stats3D.totalStars}/{stats3D.maxStars})
           </button>
         </div>
 
         <Suspense
           fallback={
             <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-[15px] text-slate-600">
-              Đang tải hệ thống 60 thử thách Hình học không gian 3D...
+              Đang tải hệ thống 180 thử thách Hình học không gian 3D...
             </div>
           }
         >
@@ -306,7 +306,7 @@ export const CampaignPage: React.FC = () => {
             }}
             className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] font-semibold text-slate-700 dark:text-slate-200 hover:border-sky-400"
           >
-            Thử thách hình học không gian 3D ({stats3D.completedCount}/60 · ★ {stats3D.totalStars}/180)
+            Thử thách hình học không gian 3D ({stats3D.completedCount}/{stats3D.totalChallenges} · ★ {stats3D.totalStars}/{stats3D.maxStars})
           </button>
         </div>
 

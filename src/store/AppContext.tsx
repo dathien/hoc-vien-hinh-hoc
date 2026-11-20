@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { ALL_CHALLENGES, getChallengeById } from '../challenges';
 import { BADGE_DEFINITIONS, computeRank, TOTAL_POSSIBLE_STARS } from '../data/ranksAndBadges';
 import type { GeoScene } from '../geometry/types';
-import { CHALLENGES_3D, getChallenge3DById } from '../geometry3d/challenges3d';
+import { ALL_CHALLENGES_3D, getChallenge3DById, TOTAL_POSSIBLE_3D_STARS } from '../geometry3d/challenges3d';
 import type { Challenge3DProgressRecord, Geo3DScene, SavedDrawing3D } from '../geometry3d/types3d';
 import { audioService } from '../services/audioService';
 import {
@@ -140,7 +140,7 @@ export interface AppContextValue {
     nextRecommendedChallengeId: string;
   };
 
-  // Computed stats (3D — 60 spatial challenges / 180 stars, strictly separate)
+  // Computed stats (3D — 180 spatial challenges / 540 stars, strictly separate)
   stats3D: {
     totalChallenges: number;
     maxStars: number;
@@ -180,7 +180,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lab3DInitialScene, setLab3DInitialScene] = useState<Geo3DScene | null>(null);
   const [lab3DInitialTitle, setLab3DInitialTitle] = useState<string | null>(null);
 
-  const [campaignDimension, setCampaignDimension] = useState<CampaignDimension>('2d');
+  const [campaignDimension, setCampaignDimension] = useState<CampaignDimension>('3d');
   const [active3DLevelId, setActive3DLevelId] = useState<number>(1);
   const [activeChallenge3DId, setActiveChallenge3DId] = useState<string | null>(null);
 
@@ -256,13 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [settings]);
 
-  // Open first-time onboarding tour once hydrated if never completed
-  useEffect(() => {
-    if (hydrated && !settings.tourCompleted) {
-      const t = window.setTimeout(() => setTourOpen(true), 450);
-      return () => window.clearTimeout(t);
-    }
-  }, [hydrated, settings.tourCompleted]);
+  // Onboarding guide is opened strictly on user request (never auto-opened on startup)
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((prev) => {
@@ -370,7 +364,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       viewedSolution: boolean;
     }) => {
       if (teacherPreviewMode) return;
-      const effectiveStars: 0 | 1 | 2 | 3 = params.viewedSolution ? 0 : params.stars;
+      const effectiveStars: 0 | 1 | 2 | 3 = params.viewedSolution
+        ? params.stars >= 1
+          ? 1
+          : 0
+        : params.stars;
 
       setProgress3DMap((prev) => {
         const existing = prev[params.challengeId];
@@ -588,7 +586,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let completedCount = 0;
     let totalStars = 0;
     let threeStarCount = 0;
-    for (const ch of CHALLENGES_3D) {
+    for (const ch of ALL_CHALLENGES_3D) {
       const rec = progress3DMap[ch.id];
       if (!rec) continue;
       const clamped = Math.min(3, Math.max(0, rec.stars));
@@ -596,15 +594,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (clamped === 3) threeStarCount += 1;
       totalStars += clamped;
     }
-    const firstUnfinished = CHALLENGES_3D.find((c) => (progress3DMap[c.id]?.stars ?? 0) < 1);
+    const firstUnfinished = ALL_CHALLENGES_3D.find((c) => (progress3DMap[c.id]?.stars ?? 0) < 1);
     return {
-      totalChallenges: CHALLENGES_3D.length,
-      maxStars: CHALLENGES_3D.length * 3,
+      totalChallenges: ALL_CHALLENGES_3D.length,
+      maxStars: TOTAL_POSSIBLE_3D_STARS,
       completedCount,
       totalStars,
       threeStarCount,
       drawingsCount: drawings3D.length,
-      nextRecommendedChallengeId: firstUnfinished?.id ?? CHALLENGES_3D[0].id,
+      nextRecommendedChallengeId: firstUnfinished?.id ?? ALL_CHALLENGES_3D[0].id,
     };
   }, [progress3DMap, drawings3D.length]);
 

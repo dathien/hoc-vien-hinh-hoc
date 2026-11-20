@@ -8,7 +8,7 @@ import {
 } from '../challenges';
 import { GeoThumbnailSVG } from '../components/geometry/GeoThumbnailSVG';
 import { MathText } from '../components/math/MathText';
-import { CHALLENGES_3D } from '../geometry3d/challenges3d';
+import { ALL_CHALLENGES_3D } from '../geometry3d/challenges3d';
 import { useApp } from '../store/AppContext';
 import type { CognitiveLevel, Difficulty, ProgramLabel } from '../validators/types';
 
@@ -57,7 +57,7 @@ export const GradesPage: React.FC = () => {
 
   const filtered3D = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return CHALLENGES_3D.filter((ch) => {
+    return ALL_CHALLENGES_3D.filter((ch) => {
       if (quickTrack === 'Kiến thức nền tảng' || quickTrack === 'Lớp 10') return false;
       if (quickTrack === 'Lớp 11' && ch.curriculumTag !== 'Toán 11') return false;
       if (quickTrack === 'Lớp 12' && ch.curriculumTag !== 'Toán 12') return false;
@@ -198,7 +198,8 @@ export const GradesPage: React.FC = () => {
       {/* Results Count */}
       <div className="flex items-center justify-between text-[15px] text-slate-600 dark:text-slate-400">
         <span>
-          Hiển thị <strong className="text-slate-900 dark:text-white font-mono-tabular">{filtered.length}</strong> / 180 thử thách phù hợp
+          Hiển thị <strong className="text-slate-900 dark:text-white font-mono-tabular">{filtered3D.length}</strong> / 180 thử thách 3D &amp;{' '}
+          <strong className="text-slate-900 dark:text-white font-mono-tabular">{filtered.length}</strong> / 180 thử thách 2D phù hợp
         </span>
         {(quickTrack !== 'Tất cả' ||
           programFilter !== 'Tất cả' ||

@@ -17,7 +17,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { BADGE_DEFINITIONS, RANK_TIERS } from '../data/ranksAndBadges';
-import { CHALLENGES_3D, LEVELS_3D } from '../geometry3d/challenges3d';
+import { ALL_CHALLENGES_3D, calcProgressPercent, LEVELS_3D } from '../geometry3d/challenges3d';
 import { useApp } from '../store/AppContext';
 
 const ICON_MAP = {
@@ -319,24 +319,25 @@ export const AchievementsPage: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {LEVELS_3D.map((lvl) => {
-            const list = CHALLENGES_3D.filter((c) => c.levelId === lvl.id);
+            const list = ALL_CHALLENGES_3D.filter((c) => c.levelId === lvl.id);
             const done = list.filter((c) => (progress3DMap[c.id]?.stars ?? 0) >= 1).length;
-            const st = list.reduce((s, c) => s + (progress3DMap[c.id]?.stars ?? 0), 0);
+            const st = list.reduce((s, c) => s + Math.min(3, Math.max(0, progress3DMap[c.id]?.stars ?? 0)), 0);
+            const pct = calcProgressPercent(done, list.length);
             return (
               <div key={lvl.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-3.5 space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold">
                   <span className="text-sky-700 dark:text-sky-400">Cấp {lvl.roman} · {lvl.curriculumTag}</span>
-                  <span className="text-amber-600">★ {st}/30</span>
+                  <span className="text-amber-600">★ {st}/{list.length * 3}</span>
                 </div>
                 <div className="font-bold text-slate-900 dark:text-white text-sm">{lvl.title}</div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                     <div
-                      className="h-full bg-sky-600 rounded-full"
-                      style={{ width: `${Math.round((done / list.length) * 100)}%` }}
+                      className="h-full bg-sky-600 rounded-full transition-all"
+                      style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <span className="text-xs font-mono-tabular text-slate-500">{done}/10</span>
+                  <span className="text-xs font-mono-tabular text-slate-500">{done}/{list.length}</span>
                 </div>
               </div>
             );

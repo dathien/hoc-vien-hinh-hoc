@@ -20,20 +20,29 @@ import type { Geo3DObject, Geo3DPoint, Geo3DScene, Tool3DId, Vec3 } from './type
 
 export type Validation3DRuleType =
   | 'has_point_at_coords'
+  | 'has_point_on_line'
+  | 'has_point_on_plane'
+  | 'has_point_centroid'
   | 'has_midpoint_of'
   | 'has_segment_between'
   | 'has_segment_between_midpoints'
   | 'has_line_through'
+  | 'has_ray_from_through'
   | 'has_vector_between'
   | 'has_vector_with_components'
   | 'has_plane_through_points'
   | 'has_plane_equation'
   | 'has_line_parallel_to_through'
+  | 'has_line_parallel_plane_through'
+  | 'has_line_perp_line_through'
   | 'has_plane_parallel_to_through'
+  | 'has_plane_perp_plane_through'
+  | 'has_intersection_ll'
   | 'has_intersection_line_planes'
   | 'has_intersection_line_plane'
   | 'has_line_perp_plane_through'
   | 'has_plane_perp_line_through'
+  | 'has_line_point_direction'
   | 'has_foot_on_plane'
   | 'has_foot_on_line'
   | 'has_reflect_point_plane'
@@ -41,6 +50,7 @@ export type Validation3DRuleType =
   | 'has_common_perpendicular'
   | 'has_cross_section_with_min_verts'
   | 'has_solid_of_type'
+  | 'has_sphere_center_radius'
   | 'has_measurement_of_rule'
   | 'has_polygon_with_vertices';
 
@@ -58,6 +68,8 @@ export interface SolutionStep3D {
   addInput: Parameters<typeof addGeo3DObject>[1];
 }
 
+export type CognitiveTier3D = 'Nhận biết' | 'Thông hiểu' | 'Vận dụng' | 'Tổng hợp';
+
 export interface Challenge3DDefinition {
   id: string;
   levelId: number;
@@ -66,7 +78,9 @@ export interface Challenge3DDefinition {
   description: string;
   hypothesis: string;
   goal: string;
+  knowledgeTopic?: string;
   difficulty: 'Cơ bản' | 'Trung bình' | 'Khá' | 'Nâng cao';
+  cognitiveTier?: CognitiveTier3D;
   curriculumTag: 'Toán 11' | 'Toán 12' | 'Kiến thức mở rộng';
   allowedTools: Tool3DId[];
   targetSteps: number;
@@ -98,6 +112,11 @@ export interface Validation3DReport {
   proofDisclaimer: string;
 }
 
+export interface Validate3DOptions {
+  hintsUsed?: number;
+  viewedSolution?: boolean;
+}
+
 function getPt(scene: Geo3DScene, id: string): Vec3 | null {
   const o = scene.objects[id];
   return o && o.kind === 'point' && o.valid ? o.position : null;
@@ -126,6 +145,61 @@ function getPlane(scene: Geo3DScene, id: string): { normal: Vec3; d: number } | 
   return null;
 }
 
+function buildSpecificRuleFeedback(rule: Validation3DRule): string {
+  switch (rule.type) {
+    case 'has_point_at_coords':
+      return `Chưa có điểm đúng tọa độ yêu cầu (${rule.params?.x ?? 0}; ${rule.params?.y ?? 0}; ${rule.params?.z ?? 0}).`;
+    case 'has_point_on_line':
+      return `Điểm đã dựng chưa nằm trên đường thẳng hoặc đoạn thẳng yêu cầu (${rule.description}).`;
+    case 'has_point_on_plane':
+      return `Điểm đã dựng chưa nằm trong mặt phẳng yêu cầu (${rule.description}).`;
+    case 'has_midpoint_of':
+      return `Chưa xác định đúng trung điểm theo yêu cầu (${rule.description}).`;
+    case 'has_segment_between':
+    case 'has_segment_between_midpoints':
+      return `Chưa có đoạn thẳng nối đúng hai đầu mút yêu cầu (${rule.description}).`;
+    case 'has_line_through':
+    case 'has_line_point_direction':
+      return `Đường thẳng đã dựng chưa đi qua đúng điểm hoặc chưa đúng phương yêu cầu (${rule.description}).`;
+    case 'has_ray_from_through':
+      return `Tia đã dựng chưa xuất phát từ đúng gốc hoặc chưa đi qua đúng hướng yêu cầu (${rule.description}).`;
+    case 'has_plane_through_points':
+      return `Mặt phẳng chưa đi qua đủ các điểm yêu cầu (${rule.description}).`;
+    case 'has_plane_equation':
+      return `Mặt phẳng đã dựng chưa trùng với phương trình yêu cầu (${rule.description}).`;
+    case 'has_line_parallel_to_through':
+    case 'has_line_parallel_plane_through':
+      return `Đường thẳng đã dựng chưa thỏa mãn điều kiện song song hoặc chưa đi qua điểm yêu cầu (${rule.description}).`;
+    case 'has_line_perp_line_through':
+    case 'has_line_perp_plane_through':
+      return `Đường thẳng đã dựng chưa thỏa mãn quan hệ vuông góc yêu cầu (${rule.description}).`;
+    case 'has_plane_parallel_to_through':
+      return `Mặt phẳng đã dựng chưa song song với mặt phẳng chuẩn hoặc chưa đi qua điểm yêu cầu (${rule.description}).`;
+    case 'has_plane_perp_line_through':
+    case 'has_plane_perp_plane_through':
+      return `Mặt phẳng đã dựng chưa thỏa mãn quan hệ vuông góc yêu cầu (${rule.description}).`;
+    case 'has_intersection_ll':
+    case 'has_intersection_line_plane':
+      return `Giao điểm chưa được xác định chính xác (${rule.description}).`;
+    case 'has_intersection_line_planes':
+      return `Giao tuyến của hai mặt phẳng chưa được xác định chính xác (${rule.description}).`;
+    case 'has_foot_on_plane':
+    case 'has_foot_on_line':
+      return `Hình chiếu vuông góc chưa được xác định chính xác (${rule.description}).`;
+    case 'has_vector_between':
+    case 'has_vector_with_components':
+      return `Vectơ đã dựng chưa khớp hướng hoặc tọa độ yêu cầu (${rule.description}).`;
+    case 'has_cross_section_with_min_verts':
+      return `Chưa dựng được thiết diện hợp lệ của khối đa diện (${rule.description}).`;
+    case 'has_sphere_center_radius':
+      return `Mặt cầu đã dựng chưa khớp tâm hoặc bán kính yêu cầu (${rule.description}).`;
+    case 'has_measurement_of_rule':
+      return `Chưa thực hiện đúng phép đo yêu cầu (${rule.description}).`;
+    default:
+      return `Chưa đạt yêu cầu: ${rule.description}`;
+  }
+}
+
 function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
   const userObjects: Geo3DObject[] = scene.order
     .map((id) => scene.objects[id])
@@ -140,6 +214,40 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
     case 'has_point_at_coords': {
       const target = v3(Number(rule.params?.x ?? 0), Number(rule.params?.y ?? 0), Number(rule.params?.z ?? 0));
       return userObjects.some((o) => o.kind === 'point' && dist3(o.position, target) < tol);
+    }
+
+    case 'has_point_on_line': {
+      const refObj = scene.objects[rule.refs[0]];
+      const l = getLine(scene, rule.refs[0]);
+      if (!l) return false;
+      return userObjects.some((o) => {
+        if (o.kind !== 'point') return false;
+        const proj = projectPointToLine(o.position, l.origin, l.direction);
+        if (proj.distance >= tol) return false;
+        if (refObj && refObj.kind === 'segment') {
+          const segLen = dist3(refObj.p1, refObj.p2);
+          const d1 = dist3(o.position, refObj.p1);
+          const d2 = dist3(o.position, refObj.p2);
+          return d1 + d2 <= segLen + tol && d1 > 0.05 && d2 > 0.05;
+        }
+        return true;
+      });
+    }
+
+    case 'has_point_on_plane': {
+      const pl = getPlane(scene, rule.refs[0]);
+      if (!pl) return false;
+      return userObjects.some(
+        (o) => o.kind === 'point' && Math.abs(dot3(pl.normal, o.position) + pl.d) < tol
+      );
+    }
+
+    case 'has_point_centroid': {
+      const pts = rule.refs.map((id) => getPt(scene, id)).filter((p): p is Vec3 => Boolean(p));
+      if (pts.length < 2) return false;
+      const sum = pts.reduce((acc, p) => v3(acc.x + p.x, acc.y + p.y, acc.z + p.z), v3(0, 0, 0));
+      const centroid = v3(sum.x / pts.length, sum.y / pts.length, sum.z / pts.length);
+      return userObjects.some((o) => o.kind === 'point' && dist3(o.position, centroid) < tol);
     }
 
     case 'has_midpoint_of': {
@@ -192,6 +300,18 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
       });
     }
 
+    case 'has_ray_from_through': {
+      const a = getPt(scene, rule.refs[0]);
+      const b = getPt(scene, rule.refs[1]);
+      if (!a || !b) return false;
+      const expectedDir = normalize3(sub3(b, a));
+      if (!expectedDir) return false;
+      return userObjects.some((o) => {
+        if (o.kind !== 'ray') return false;
+        return dist3(o.origin, a) < tol && dot3(o.direction, expectedDir) > 0.995;
+      });
+    }
+
     case 'has_vector_between': {
       const a = getPt(scene, rule.refs[0]);
       const b = getPt(scene, rule.refs[1]);
@@ -239,10 +359,40 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
       const refL = getLine(scene, rule.refs[1]);
       if (!pt || !refL) return false;
       return userObjects.some((o) => {
-        if (o.kind !== 'line') return false;
-        const crossLen = norm3(cross3(o.direction, refL.direction));
-        const dPt = projectPointToLine(pt, o.origin, o.direction).distance;
+        if (o.kind !== 'line' && o.kind !== 'segment') return false;
+        const l = getLine(scene, o.id);
+        if (!l) return false;
+        const crossLen = norm3(cross3(l.direction, refL.direction));
+        const dPt = projectPointToLine(pt, l.origin, l.direction).distance;
         return crossLen < 0.03 && dPt < tol;
+      });
+    }
+
+    case 'has_line_parallel_plane_through': {
+      const pt = getPt(scene, rule.refs[0]);
+      const refPl = getPlane(scene, rule.refs[1]);
+      if (!pt || !refPl) return false;
+      return userObjects.some((o) => {
+        if (o.kind !== 'line' && o.kind !== 'segment') return false;
+        const l = getLine(scene, o.id);
+        if (!l) return false;
+        const dPt = projectPointToLine(pt, l.origin, l.direction).distance;
+        const perpToNormal = Math.abs(dot3(l.direction, refPl.normal)) < 0.03;
+        return dPt < tol && perpToNormal;
+      });
+    }
+
+    case 'has_line_perp_line_through': {
+      const pt = getPt(scene, rule.refs[0]);
+      const refL = getLine(scene, rule.refs[1]);
+      if (!pt || !refL) return false;
+      return userObjects.some((o) => {
+        if (o.kind !== 'line' && o.kind !== 'segment') return false;
+        const l = getLine(scene, o.id);
+        if (!l) return false;
+        const dPt = projectPointToLine(pt, l.origin, l.direction).distance;
+        const isPerp = Math.abs(dot3(l.direction, refL.direction)) < 0.03;
+        return dPt < tol && isPerp;
       });
     }
 
@@ -256,6 +406,31 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
         const dPt = Math.abs(dot3(o.normal, pt) + o.d);
         return crossLen < 0.03 && dPt < tol;
       });
+    }
+
+    case 'has_plane_perp_plane_through': {
+      const p1 = getPt(scene, rule.refs[0]);
+      const p2 = getPt(scene, rule.refs[1]);
+      const refPl = getPlane(scene, rule.refs[2]);
+      if (!p1 || !p2 || !refPl) return false;
+      return userObjects.some((o) => {
+        if (o.kind !== 'plane' && o.kind !== 'polygon') return false;
+        const pl = getPlane(scene, o.id);
+        if (!pl) return false;
+        const d1 = Math.abs(dot3(pl.normal, p1) + pl.d);
+        const d2 = Math.abs(dot3(pl.normal, p2) + pl.d);
+        const perp = Math.abs(dot3(pl.normal, refPl.normal)) < 0.04;
+        return d1 < tol && d2 < tol && perp;
+      });
+    }
+
+    case 'has_intersection_ll': {
+      const l1 = getLine(scene, rule.refs[0]);
+      const l2 = getLine(scene, rule.refs[1]);
+      if (!l1 || !l2) return false;
+      const rel = analyzeLineLineRelation(l1.origin, l1.direction, l2.origin, l2.direction);
+      if (rel.relation !== 'intersecting' || !rel.intersection) return false;
+      return userObjects.some((o) => o.kind === 'point' && dist3(o.position, rel.intersection!) < tol);
     }
 
     case 'has_intersection_line_planes': {
@@ -305,6 +480,21 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
         const crossLen = norm3(cross3(o.normal, refL.direction));
         const dPt = Math.abs(dot3(o.normal, pt) + o.d);
         return crossLen < 0.03 && dPt < tol;
+      });
+    }
+
+    case 'has_line_point_direction': {
+      const pt = rule.refs[0]
+        ? getPt(scene, rule.refs[0])
+        : v3(Number(rule.params?.px ?? 0), Number(rule.params?.py ?? 0), Number(rule.params?.pz ?? 0));
+      const dir = normalize3(v3(Number(rule.params?.dx ?? 1), Number(rule.params?.dy ?? 0), Number(rule.params?.dz ?? 0)));
+      if (!pt || !dir) return false;
+      return userObjects.some((o) => {
+        if (o.kind !== 'line' && o.kind !== 'segment') return false;
+        const l = getLine(scene, o.id);
+        if (!l) return false;
+        const cmp = analyzeLineLineRelation(l.origin, l.direction, pt, dir);
+        return cmp.relation === 'coincident';
       });
     }
 
@@ -369,6 +559,16 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
       return allValid.some((o) => o.kind === 'solid' && !o.style.isGiven && o.solidType === st);
     }
 
+    case 'has_sphere_center_radius': {
+      const targetCenter = v3(Number(rule.params?.cx ?? 0), Number(rule.params?.cy ?? 0), Number(rule.params?.cz ?? 0));
+      const targetR = Number(rule.params?.r ?? 2);
+      return userObjects.some((o) => {
+        if (o.kind !== 'solid' || o.solidType !== 'sphere') return false;
+        const rActual = o.radius ?? Number(o.params?.r ?? 0);
+        return dist3(o.center, targetCenter) < 0.15 && Math.abs(rActual - targetR) < 0.15;
+      });
+    }
+
     case 'has_measurement_of_rule': {
       const rName = String(rule.params?.rule ?? '');
       return userObjects.some((o) => o.kind === 'measurement' && o.rule === rName);
@@ -383,14 +583,19 @@ function checkSingleRule(scene: Geo3DScene, rule: Validation3DRule): boolean {
 
 /**
  * Dynamic 3D geometric validation across multiple perturbed non-degenerate configurations.
- * Implements all 8 steps and all 5 Vietnamese status messages from Section XXVI.
+ * Implements standardized 3-star scoring:
+ *   - 3 sao: Hoàn thành chính xác, không dùng gợi ý và không xem hướng dẫn giải
+ *   - 2 sao: Hoàn thành chính xác, có sử dụng gợi ý
+ *   - 1 sao: Hoàn thành chính xác sau khi xem hướng dẫn dựng hình
+ *   - 0 sao: Chưa hoàn thành
  */
 export function validateChallenge3D(
   challenge: Challenge3DDefinition,
-  scene: Geo3DScene
+  scene: Geo3DScene,
+  options?: Validate3DOptions
 ): Validation3DReport {
   const proofDisclaimer =
-    'Lưu ý: Kiểm chứng bằng số trên nhiều cấu hình động xác nhận tính ổn định của phép dựng nhưng không thay thế cho chứng minh toán học tổng quát.';
+    'Lưu ý: Kiểm chứng bằng tọa độ và cấu hình động xác nhận tính đúng đắn hình học của phép dựng nhưng không thay thế cho chứng minh toán học tổng quát.';
 
   const userObjects = scene.order
     .map((id) => scene.objects[id])
@@ -407,7 +612,7 @@ export function validateChallenge3D(
       configsPassed: 0,
       configsTotal: 1,
       message: 'Thiếu đối tượng cần dựng.',
-      details: ['Bạn chưa dựng thêm đối tượng nào trên không gian 3D. Hãy đọc mục tiêu dựng hình và thực hiện phép dựng.'],
+      details: ['Bạn chưa dựng thêm đối tượng nào trên không gian 3D. Hãy chọn công cụ bên trái và thực hiện phép dựng theo yêu cầu.'],
       proofDisclaimer,
     };
   }
@@ -422,8 +627,8 @@ export function validateChallenge3D(
       targetSteps: challenge.targetSteps,
       configsPassed: 0,
       configsTotal: 1,
-      message: 'Có đối tượng không hợp lệ.',
-      details: invalidUserObjs.map((o) => `${o.label}: ${o.errorMessage ?? 'Quan hệ hình học bị suy biến.'}`),
+      message: 'Có đối tượng không hợp lệ hoặc suy biến.',
+      details: invalidUserObjs.map((o) => `${o.label}: ${o.errorMessage ?? 'Quan hệ hình học bị suy biến (điểm trùng nhau hoặc thẳng hàng).'}`),
       proofDisclaimer,
     };
   }
@@ -443,8 +648,8 @@ export function validateChallenge3D(
       targetSteps: challenge.targetSteps,
       configsPassed: 0,
       configsTotal: 1,
-      message: 'Chưa thỏa mãn một hoặc nhiều quan hệ hình học.',
-      details: failedCurrent.map((x) => `Chưa đạt: ${x.rule.description}`),
+      message: 'Phép dựng chưa thỏa mãn đầy đủ yêu cầu hình học.',
+      details: failedCurrent.map((x) => buildSpecificRuleFeedback(x.rule)),
       proofDisclaimer,
     };
   }
@@ -496,15 +701,15 @@ export function validateChallenge3D(
       configsTotal: totalConfigs,
       message: 'Phép dựng chưa ổn định khi thay đổi giả thiết.',
       details: [
-        `Đạt ${passedConfigs}/${totalConfigs} cấu hình biến động. Hãy kiểm tra lại xem đối tượng đã được dựng bằng công cụ ràng buộc hình học đúng chưa thay vì đặt điểm rời rạc.`,
+        `Đạt ${passedConfigs}/${totalConfigs} cấu hình động. Đối tượng cần được dựng bằng công cụ ràng buộc hình học thay vì đặt điểm ước lượng.`,
       ],
       proofDisclaimer,
     };
   }
 
-  // Passed! Compute 3-star rating for 3D (strictly separate from 2D 540-star system)
-  const stars: 1 | 2 | 3 =
-    usedSteps <= challenge.targetSteps ? 3 : usedSteps <= challenge.targetSteps + 2 ? 2 : 1;
+  const viewedSolution = Boolean(options?.viewedSolution);
+  const hintsUsed = options?.hintsUsed ?? 0;
+  const stars: 1 | 2 | 3 = viewedSolution ? 1 : hintsUsed > 0 ? 2 : 3;
 
   return {
     status: 'passed',
@@ -514,10 +719,14 @@ export function validateChallenge3D(
     targetSteps: challenge.targetSteps,
     configsPassed: passedConfigs,
     configsTotal: totalConfigs,
-    message: 'Phép dựng thỏa mãn các điều kiện đã kiểm tra.',
+    message: 'Chính xác! Phép dựng thỏa mãn toàn bộ yêu cầu hình học.',
     details: [
-      `Kiểm chứng thành công trên ${passedConfigs}/${totalConfigs} cấu hình không suy biến.`,
-      `Số bước dựng: ${usedSteps} (mục tiêu tối ưu: ≤ ${challenge.targetSteps} bước).`,
+      `Kiểm chứng thành công trên ${passedConfigs}/${totalConfigs} cấu hình hình học.`,
+      stars === 3
+        ? 'Đạt tối đa 3 sao: Hoàn thành chính xác, không dùng gợi ý.'
+        : stars === 2
+        ? 'Đạt 2 sao: Hoàn thành chính xác có sử dụng gợi ý.'
+        : 'Đạt 1 sao: Hoàn thành chính xác sau khi xem hướng dẫn dựng hình.',
     ],
     proofDisclaimer,
   };

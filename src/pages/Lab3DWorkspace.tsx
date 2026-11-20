@@ -60,7 +60,7 @@ import {
   sub3,
   v3,
 } from '../geometry3d/math3d';
-import { SOLID_CATALOG, TOOL3D_CATALOG, TOOL3D_GROUPS, getTool3DDef } from '../geometry3d/tools3d';
+import { SOLID_CATALOG, getTool3DDef } from '../geometry3d/tools3d';
 import type {
   DisplayMode3D,
   Geo3DCrossSection,
@@ -72,7 +72,6 @@ import type {
   Tool3DId,
   TransformPreview3D,
   Vec3,
-  WorkingPlaneKind,
 } from '../geometry3d/types3d';
 import { MathFormulaEditor } from '../components/math/MathFormulaEditor';
 import { MathText } from '../components/math/MathText';
@@ -81,13 +80,16 @@ import {
   Viewport3D,
   type Viewport3DHandle,
 } from '../components/geometry3d/Viewport3D';
+import { VerticalToolSidebar3D } from '../components/geometry3d/VerticalToolSidebar3D';
 import { WebGLErrorBoundary } from '../components/geometry3d/WebGLErrorBoundary';
+import { SmartInstructionBar } from '../components/geometry/SmartInstructionBar';
 import { useApp } from '../store/AppContext';
 
 interface Lab3DWorkspaceProps {
   initialScene?: Geo3DScene | null;
   initialTitle?: string | null;
   onFallback2D?: () => void;
+  onOpenTemplates?: () => void;
   onOpenGuide?: () => void;
 }
 
@@ -148,18 +150,22 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
   initialScene,
   initialTitle,
   onFallback2D,
+  onOpenTemplates,
   onOpenGuide,
 }) => {
   const { settings, saveDrawing3D, logStudyEvent } = useApp();
   const viewportRef = useRef<Viewport3DHandle | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const rightResizeRef = useRef<{ x: number; w: number } | null>(null);
 
   const [scene, setScene] = useState<Geo3DScene>(() =>
     initialScene ? cloneScene3D(initialScene) : createEmptyScene3D()
   );
-  const [title, setTitle] = useState<string>(initialTitle || 'Bản dựng không gian 3D');
+  const [title, setTitle] = useState<string>(initialTitle || 'Bản vẽ 3D mới');
   const [drawingId, setDrawingId] = useState<string>(() => `d3d_${Date.now()}`);
+  const [isDirty, setIsDirty] = useState(false);
+  const [confirmNewOpen, setConfirmNewOpen] = useState(false);
   const [undoStack, setUndoStack] = useState<Geo3DScene[]>([]);
   const [redoStack, setRedoStack] = useState<Geo3DScene[]>([]);
 
@@ -168,23 +174,11 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
-  // Layout panels
-  const [leftOpen, setLeftOpen] = useState(true);
+  // Layout panels (4-zone studio)
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
+  const [rightWidth, setRightWidth] = useState(308);
   const [rightTab, setRightTab] = useState<'inspector' | 'log' | 'relations'>('inspector');
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    select: true,
-    point: true,
-    line: true,
-    plane: false,
-    polygon: false,
-    solid: true,
-    relation: false,
-    transform: false,
-    section: false,
-    measure: false,
-    text: false,
-  });
 
   // Viewport controls
   const [autoRotate, setAutoRotate] = useState(false);
@@ -272,6 +266,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
       setRedoStack([]);
       return next;
     });
+    setIsDirty(true);
   }, []);
 
   const handleUndo = useCallback(() => {
@@ -823,11 +818,24 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
           }
           break;
 
+        case 'measure_dihedral':
+          if (refs.length < 4) needMore();
+          else {
+            finish(
+              addGeo3DObject(scene, {
+                kind: 'measurement',
+                rule: 'measure_dihedral_angle',
+                parents: [refs[0], refs[1], refs[2], refs[3]],
+                label: 'Góc nhị diện',
+              })
+            );
+          }
+          break;
+
         case 'measure_angle_vec':
         case 'measure_angle_ll':
         case 'measure_angle_lp':
         case 'measure_angle_pp':
-        case 'measure_dihedral':
         case 'measure_dist_pl':
         case 'measure_dist_pplane':
         case 'measure_dist_skew':
@@ -837,7 +845,6 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
             measure_angle_ll: 'measure_angle_lines',
             measure_angle_lp: 'measure_angle_line_plane',
             measure_angle_pp: 'measure_angle_planes',
-            measure_dihedral: 'measure_dihedral_angle',
             measure_dist_pl: 'measure_distance_pl',
             measure_dist_pplane: 'measure_distance_pplane',
             measure_dist_skew: 'measure_distance_skew',
@@ -1062,26 +1069,97 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
   };
 
   // Save drawing to IndexedDB
-  const handleSaveDrawing = async () => {
+  const handleSaveDrawing = useCallback(async () => {
     const now = new Date().toISOString();
     const camState = viewportRef.current?.getCameraState() ?? scene.camera;
     const toSave: Geo3DScene = { ...scene, camera: camState };
     await saveDrawing3D({
       id: drawingId,
       schemaVersion: 1,
-      title: title.trim() || 'Bản dựng không gian 3D',
+      title: title.trim() || 'Bản vẽ 3D mới',
       topic: 'Hình học không gian 3D',
       scene: toSave,
       createdAt: now,
       updatedAt: now,
     });
+    setIsDirty(false);
     await logStudyEvent({
       type: 'lab',
       refId: drawingId,
-      title: `[3D] ${title.trim() || 'Bản dựng không gian 3D'}`,
-      detail: `Lưu bản dựng 3D (${scene.order.length} đối tượng)`,
+      title: `[3D] ${title.trim() || 'Bản vẽ 3D mới'}`,
+      detail: `Lưu bản vẽ 3D (${scene.order.length} đối tượng)`,
     });
-    flashBanner('Đã lưu bản dựng 3D vào thiết bị.');
+    flashBanner('Đã lưu bản vẽ 3D vào thiết bị.');
+  }, [drawingId, title, scene, saveDrawing3D, logStudyEvent, flashBanner]);
+
+  const createBlank3DDrawing = () => {
+    setScene(createEmptyScene3D());
+    setUndoStack([]);
+    setRedoStack([]);
+    setTitle('Bản vẽ 3D mới');
+    setDrawingId(`d3d_${Date.now()}`);
+    setSelectedId(null);
+    setPendingRefs([]);
+    setActiveTool('select');
+    setIsDirty(false);
+    setConfirmNewOpen(false);
+    flashBanner('Đã tạo bản vẽ không gian 3D mới.');
+  };
+
+  // Safe keyboard shortcuts in 3D studio (never interfere with text inputs)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === 'Escape') {
+        setActiveTool('select');
+        setPendingRefs([]);
+        setConfirmNewOpen(false);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')
+      ) {
+        e.preventDefault();
+        handleRedo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void handleSaveDrawing();
+      } else if (e.key === 'Delete' && selectedId) {
+        e.preventDefault();
+        commitScene(deleteGeo3DObjectWithDependents(scene, selectedId));
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleUndo, handleRedo, handleSaveDrawing, selectedId, commitScene, scene]);
+
+  const startRightResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    rightResizeRef.current = { x: e.clientX, w: rightWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!rightResizeRef.current) return;
+      const delta = rightResizeRef.current.x - ev.clientX;
+      setRightWidth(Math.max(240, Math.min(380, rightResizeRef.current.w + delta)));
+    };
+    const onUp = () => {
+      rightResizeRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   // Export handlers
@@ -1285,33 +1363,44 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-48 sm:w-56 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-[15px] font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              aria-label="Tên bản dựng 3D"
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setIsDirty(true);
+              }}
+              className="w-48 sm:w-56 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-teal-600 bg-transparent focus:bg-slate-50 dark:focus:bg-slate-800 px-2.5 py-1.5 text-[16px] font-bold text-slate-900 dark:text-slate-100 focus:outline-none"
+              aria-label="Tên bản vẽ 3D"
             />
+            {onOpenTemplates && (
+              <button
+                type="button"
+                onClick={onOpenTemplates}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                title="Mở thư viện hình mẫu 3D"
+              >
+                <Layers className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+                Mở mẫu
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
-                commitScene(createEmptyScene3D());
-                setTitle('Bản dựng không gian 3D mới');
-                setDrawingId(`d3d_${Date.now()}`);
-                setSelectedId(null);
-                flashBanner('Đã tạo không gian dựng hình 3D mới.');
+                if (isDirty && scene.order.length > 0) setConfirmNewOpen(true);
+                else createBlank3DDrawing();
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-              title="Tạo bản dựng mới"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              title="Tạo bản vẽ 3D trống mới"
             >
               <FolderPlus className="w-4 h-4" />
-              <span className="hidden xl:inline">Tạo mới</span>
+              <span className="hidden xl:inline">Bản vẽ mới</span>
             </button>
             <button
               type="button"
               onClick={() => void handleSaveDrawing()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 text-white text-sm font-semibold hover:bg-teal-800"
-              title="Lưu bản dựng vào thiết bị"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[40px] rounded-xl bg-teal-700 text-white text-sm font-semibold hover:bg-teal-800"
+              title="Lưu bản vẽ vào thiết bị (Ctrl+S)"
             >
               <Save className="w-4 h-4" />
-              Lưu
+              Lưu bản vẽ
             </button>
             <button
               type="button"
@@ -1531,191 +1620,85 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
         </div>
       )}
 
+      {/* Unsaved Changes Inline Confirmation Bar */}
+      {confirmNewOpen && !presentationMode && (
+        <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="font-medium text-amber-950 dark:text-amber-100">
+            Bản vẽ 3D hiện tại có thay đổi chưa lưu. Bạn muốn lưu trước khi tạo bản vẽ trống mới không?
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmNewOpen(false)}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={createBlank3DDrawing}
+              className="px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 font-semibold hover:bg-rose-100"
+            >
+              Không lưu, tạo mới
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await handleSaveDrawing();
+                createBlank3DDrawing();
+              }}
+              className="px-3 py-1.5 rounded-lg bg-teal-700 text-white font-semibold hover:bg-teal-800"
+            >
+              Lưu &amp; Tạo mới
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* MAIN 3-COLUMN WORKSPACE BODY */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* ZONE 2: LEFT COLLAPSIBLE TOOL PANEL */}
+        {/* ZONE 2: LEFT COLLAPSIBLE 8-GROUP 3D TOOL SIDEBAR */}
         {!presentationMode && (
-          <aside
-            className={`border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col transition-all duration-200 shrink-0 ${
-              leftOpen ? 'w-72' : 'w-12'
-            }`}
-          >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800">
-              {leftOpen && (
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                  Công cụ dựng hình 3D
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setLeftOpen((v) => !v)}
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                title={leftOpen ? 'Thu gọn thanh công cụ' : 'Mở thanh công cụ'}
-              >
-                {leftOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {leftOpen && (
-              <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5">
-                {/* Explicit Working Plane Selector */}
-                <div className="rounded-xl border border-teal-200/80 bg-teal-50/50 dark:bg-slate-800/70 dark:border-slate-700 p-2.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wide text-teal-800 dark:text-teal-300">
-                      Mặt phẳng làm việc
-                    </span>
-                    <span className="text-xs font-mono text-slate-600 dark:text-slate-300">
-                      {scene.workingPlane.kind}
-                      {scene.workingPlane.offset !== 0 ? ` (${scene.workingPlane.offset > 0 ? '+' : ''}${scene.workingPlane.offset})` : ''}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {(['Oxy', 'Oxz', 'Oyz'] as WorkingPlaneKind[]).map((wp) => (
-                      <button
-                        key={wp}
-                        type="button"
-                        onClick={() =>
-                          setScene((prev) => ({
-                            ...prev,
-                            workingPlane: { ...prev.workingPlane, kind: wp },
-                          }))
-                        }
-                        className={`py-1 rounded-lg text-xs font-semibold transition-colors ${
-                          scene.workingPlane.kind === wp
-                            ? 'bg-teal-700 text-white'
-                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-teal-400'
-                        }`}
-                      >
-                        {wp}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-600 dark:text-slate-400 shrink-0">Cao độ/dịch:</span>
-                    <input
-                      type="range"
-                      min={-5}
-                      max={5}
-                      step={0.5}
-                      value={scene.workingPlane.offset}
-                      onChange={(e) =>
-                        setScene((prev) => ({
-                          ...prev,
-                          workingPlane: { ...prev.workingPlane, offset: Number(e.target.value) },
-                        }))
-                      }
-                      className="flex-1 accent-teal-700"
-                    />
-                  </div>
-                </div>
-
-                {/* 11 Grouped Tool Categories */}
-                {TOOL3D_GROUPS.map((grp) => {
-                  const tools = Object.values(TOOL3D_CATALOG).filter((t) => t.group === grp.id);
-                  const open = Boolean(expandedGroups[grp.id]);
-                  return (
-                    <div
-                      key={grp.id}
-                      className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden"
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedGroups((prev) => ({ ...prev, [grp.id]: !prev[grp.id] }))
-                        }
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/70 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        <span className="text-[13px] font-bold text-slate-800 dark:text-slate-100">
-                          {grp.label}
-                        </span>
-                        <ChevronDown
-                          className={`w-4 h-4 text-slate-500 transition-transform ${
-                            open ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-                      {open && (
-                        <div className="p-1.5 grid grid-cols-1 gap-1 bg-white dark:bg-slate-900">
-                          {tools.map((tool) => {
-                            const active = activeTool === tool.id;
-                            return (
-                              <button
-                                key={tool.id}
-                                type="button"
-                                onClick={() => handleToolSelect(tool.id)}
-                                title={tool.tooltip}
-                                className={`w-full px-2.5 py-2 rounded-lg text-left text-[14px] font-medium flex items-center justify-between gap-2 transition-colors ${
-                                  active
-                                    ? 'bg-teal-700 text-white shadow-xs'
-                                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                }`}
-                              >
-                                <span className="truncate">{tool.name}</span>
-                                {tool.isExtended && (
-                                  <span
-                                    className={`text-[11px] px-1.5 py-0.5 rounded shrink-0 ${
-                                      active
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300'
-                                    }`}
-                                  >
-                                    Mở rộng
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </aside>
+          <VerticalToolSidebar3D
+            activeTool={activeTool}
+            onSelectTool={handleToolSelect}
+            collapsed={leftCollapsed}
+            onToggleCollapse={() => setLeftCollapsed((v) => !v)}
+            workingPlaneKind={scene.workingPlane.kind}
+            workingPlaneOffset={scene.workingPlane.offset}
+            onChangeWorkingPlane={(wp) =>
+              setScene((prev) => ({
+                ...prev,
+                workingPlane: { ...prev.workingPlane, kind: wp },
+              }))
+            }
+            onChangeWorkingPlaneOffset={(offset) =>
+              setScene((prev) => ({
+                ...prev,
+                workingPlane: { ...prev.workingPlane, offset },
+              }))
+            }
+          />
         )}
 
         {/* ZONE 3: CENTER 3D VIEWPORT */}
-        <div className="flex-1 flex flex-col min-w-0 bg-slate-100/70 dark:bg-slate-950 p-2.5 gap-2">
-          {/* Inline live guidance prompt */}
+        <div className="flex-1 flex flex-col min-w-0 bg-slate-100/70 dark:bg-slate-950">
+          {/* Smart Single-Line Contextual Guidance Bar */}
           {!presentationMode && (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2 text-[14px] text-slate-700 dark:text-slate-200">
-                <span className="px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 font-semibold text-xs">
-                  {activeToolDef.name}
-                </span>
-                <span>{statusBanner || activeToolDef.actionPrompt}</span>
-                {pendingRefs.length > 0 && (
-                  <span className="text-xs font-semibold text-sky-700 dark:text-sky-300">
-                    (Đã chọn: {pendingRefs.map((rid) => scene.objects[rid]?.label ?? rid).join(', ')})
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {pendingRefs.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setPendingRefs([])}
-                    className="text-xs font-semibold text-rose-600 hover:underline"
-                  >
-                    Hủy chọn
-                  </button>
-                )}
-                {activeTool !== 'select' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTool('select');
-                      setPendingRefs([]);
-                    }}
-                    className="text-xs font-semibold text-slate-600 hover:text-slate-900"
-                  >
-                    Về công cụ Chọn
-                  </button>
-                )}
-              </div>
-            </div>
+            <SmartInstructionBar
+              toolName={activeToolDef.name}
+              instruction={activeToolDef.actionPrompt}
+              selectedLabels={pendingRefs.map((rid) => scene.objects[rid]?.label ?? rid)}
+              bannerMessage={statusBanner}
+              canCancel={activeTool !== 'select' || pendingRefs.length > 0}
+              onCancel={() => {
+                setActiveTool('select');
+                setPendingRefs([]);
+              }}
+            />
           )}
+
+          <div className="flex-1 flex flex-col min-h-0 p-2.5 gap-2">
 
           {/* Presentation note banner */}
           {presentationMode && presentationNotes && presentationStepIdx != null && scene.log[presentationStepIdx] && (
@@ -1881,7 +1864,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
               {[
                 { key: 'showGrid', label: 'Lưới' },
                 { key: 'showAxes', label: 'Oxyz' },
-                { key: 'showHiddenEdges', label: 'Nét khuất' },
+                { key: 'showHiddenLines', label: 'Nét khuất' },
                 { key: 'showLabels', label: 'Nhãn' },
               ].map((t) => {
                 const active = Boolean(scene[t.key as keyof Geo3DScene]);
@@ -1907,67 +1890,74 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
               })}
             </div>
           </div>
+          </div>
         </div>
 
-        {/* ZONE 4: RIGHT COLLAPSIBLE INSPECTOR, LOG & RELATION ANALYZER */}
+        {/* ZONE 4: RIGHT COLLAPSIBLE, HIDEABLE, DRAG-RESIZABLE INSPECTOR, LOG & RELATION ANALYZER */}
         {!presentationMode && (
-          <aside
-            className={`border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col transition-all duration-200 shrink-0 ${
-              rightOpen ? 'w-80' : 'w-12'
-            }`}
-          >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setRightOpen((v) => !v)}
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                title={rightOpen ? 'Thu gọn bảng thuộc tính' : 'Mở bảng thuộc tính'}
-              >
-                {rightOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-              </button>
-              {rightOpen && (
-                <div className="flex items-center gap-1">
-                  {[
-                    { id: 'inspector', label: 'Thuộc tính', icon: SlidersHorizontal },
-                    { id: 'log', label: 'Nhật ký', icon: ListOrdered },
-                    { id: 'relations', label: 'Quan hệ', icon: Layers },
-                  ].map((tab) => {
-                    const Icon = tab.icon;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setRightTab(tab.id as typeof rightTab)}
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${
-                          rightTab === tab.id
-                            ? 'bg-teal-700 text-white'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
+          <div className="relative flex shrink-0">
             {rightOpen && (
-              <div className="flex-1 overflow-y-auto p-3.5 space-y-4 text-[14px]">
-                {/* TAB 1: CONTEXT-SENSITIVE INSPECTOR */}
-                {rightTab === 'inspector' && (
-                  <>
-                    {!selectedObj ? (
-                      <div className="space-y-4">
-                        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3.5 text-slate-600 dark:text-slate-300 space-y-1.5">
-                          <div className="font-semibold text-slate-900 dark:text-slate-100">
-                            Chưa chọn đối tượng 3D
+              <div
+                onMouseDown={startRightResize}
+                className="w-1.5 cursor-col-resize hover:bg-teal-500/40 active:bg-teal-600/60 transition-colors shrink-0 border-l border-slate-200 dark:border-slate-800"
+                title="Kéo để thay đổi độ rộng bảng"
+              />
+            )}
+            <aside
+              style={{ width: rightOpen ? `${rightWidth}px` : '46px' }}
+              className={`bg-white dark:bg-slate-900 flex flex-col shrink-0 ${
+                rightOpen ? '' : 'border-l border-slate-200 dark:border-slate-800'
+              }`}
+            >
+              <div className="flex items-center justify-between px-2.5 py-2 border-b border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setRightOpen((v) => !v)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  title={rightOpen ? 'Thu gọn bảng thuộc tính' : 'Mở bảng thuộc tính'}
+                >
+                  {rightOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                </button>
+                {rightOpen && (
+                  <div className="flex items-center gap-1">
+                    {[
+                      { id: 'inspector', label: 'Thuộc tính', icon: SlidersHorizontal },
+                      { id: 'log', label: 'Nhật ký', icon: ListOrdered },
+                      { id: 'relations', label: 'Quan hệ', icon: Layers },
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setRightTab(tab.id as typeof rightTab)}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${
+                            rightTab === tab.id
+                              ? 'bg-teal-700 text-white'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {rightOpen && (
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-4 text-[14px]">
+                  {/* TAB 1: CONTEXT-SENSITIVE INSPECTOR */}
+                  {rightTab === 'inspector' && (
+                    <>
+                      {!selectedObj ? (
+                        <div className="space-y-4">
+                          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3.5 text-slate-600 dark:text-slate-300">
+                            <p className="text-sm leading-relaxed">
+                              Chọn một đối tượng trên bảng vẽ để chỉnh sửa thuộc tính.
+                            </p>
                           </div>
-                          <p className="text-sm leading-relaxed">
-                            Nhấp vào một điểm, đoạn thẳng, mặt phẳng, thiết diện hoặc hình khối trên không gian 3D để xem thông số và điều chỉnh trực tiếp.
-                          </p>
-                        </div>
 
                         {/* Smart Label settings */}
                         <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2.5">
@@ -2504,6 +2494,7 @@ export const Lab3DWorkspace: React.FC<Lab3DWorkspaceProps> = ({
               </div>
             )}
           </aside>
+          </div>
         )}
       </div>
 

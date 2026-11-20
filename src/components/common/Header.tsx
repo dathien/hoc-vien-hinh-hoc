@@ -68,9 +68,10 @@ const SECONDARY_NAV: SecondaryNavItem[] = [
 ];
 
 export const Header: React.FC = () => {
-  const { page, setPage, settings, updateSettings, stats } = useApp();
+  const { page, setPage, settings, updateSettings, stats, stats3D, campaignDimension } = useApp();
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const activeStarStats = campaignDimension === '3d' ? stats3D : stats;
 
   const navigate = (target: PageId, sectionId?: string) => {
     setPage(target);
@@ -185,10 +186,10 @@ export const Header: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('achievements')}
-            className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-mono-tabular font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 whitespace-nowrap shrink-0"
-            title="Tổng số sao đạt được"
+            className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[15px] font-mono-tabular font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 whitespace-nowrap shrink-0"
+            title={`Thử thách 3D: ★ ${stats3D.totalStars}/${stats3D.maxStars} · Thử thách 2D: ★ ${stats.totalStars}/${stats.maxStars}`}
           >
-            ★ {stats.totalStars}/{stats.maxStars}
+            ★ {activeStarStats.totalStars}/{activeStarStats.maxStars}
           </button>
 
           <div className="hidden sm:block">
@@ -290,7 +291,7 @@ export const Header: React.FC = () => {
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <span className="text-sm font-mono-tabular font-semibold text-amber-700 dark:text-amber-300">
-              ★ {stats.totalStars}/{stats.maxStars} sao · {stats.rank.current.title}
+              ★ {activeStarStats.totalStars}/{activeStarStats.maxStars} sao · {stats.rank.current.title}
             </span>
             <PWAInstallButton compact />
           </div>

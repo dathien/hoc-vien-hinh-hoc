@@ -6,20 +6,185 @@ import {
   ChevronRight,
   Compass,
   Download,
+  FilePlus2,
+  FolderOpen,
   GraduationCap,
   HardDrive,
   HelpCircle,
   Lightbulb,
   MapPin,
+  Maximize2,
   PenTool,
   Play,
   Ruler,
+  Save,
   ShieldCheck,
+  SlidersHorizontal,
   Target,
+  WifiOff,
 } from 'lucide-react';
 import { LiveGeo3DPreview } from '../components/geometry3d/LiveGeo3DPreview';
 import { getTemplate3DById } from '../geometry3d/templates3d';
 import { useApp } from '../store/AppContext';
+
+interface QuickTaskGuide {
+  id: string;
+  number: number;
+  title: string;
+  purpose: string;
+  location: string;
+  steps: string[];
+  actionLabel: string;
+  actionTarget: 'lab' | 'campaign' | 'settings';
+  labMode?: '2d' | '3d' | 'templates' | 'saved';
+  campaignDim?: '2d' | '3d';
+}
+
+const QUICK_TASK_GUIDES: QuickTaskGuide[] = [
+  {
+    id: 'task-new-drawing',
+    number: 1,
+    title: 'Tạo bản vẽ mới',
+    purpose: 'Khởi tạo bảng vẽ trắng sạch để tự dựng hình phẳng 2D hoặc không gian 3D mà không bị lẫn hình mẫu cũ.',
+    location: 'Thanh trên cùng của Phòng thực hành → nút "Bản vẽ mới".',
+    steps: [
+      'Mở mục "Phòng thực hành" trên thanh điều hướng và chọn chế độ "Dựng hình 2D" hoặc "Dựng hình 3D".',
+      'Nhấn nút "Bản vẽ mới" ở thanh công cụ phía trên.',
+      'Nếu bản vẽ hiện tại có thay đổi chưa lưu, chọn Lưu lại hoặc Xác nhận tạo mới ngay trên hộp thoại.',
+      'Nhấp trực tiếp vào tiêu đề bản vẽ ở góc trên trái để đặt tên mới cho bài vẽ.',
+    ],
+    actionLabel: 'Mở Phòng thực hành',
+    actionTarget: 'lab',
+    labMode: '2d',
+  },
+  {
+    id: 'task-tools-2d',
+    number: 2,
+    title: 'Sử dụng công cụ 2D',
+    purpose: 'Dựng điểm, đường thẳng, đường tròn, trung điểm, đường vuông góc, phép biến hình và đo đạc trên mặt phẳng.',
+    location: 'Thanh công cụ dọc bên trái gồm 4 nút dùng nhanh và 8 nhóm công cụ.',
+    steps: [
+      'Chọn nhanh 4 công cụ thường dùng (Chọn, Điểm, Đoạn thẳng, Đường tròn) ngay đầu thanh bên trái.',
+      'Hoặc nhấp vào 1 trong 8 nhóm công cụ để mở bảng chọn bên cạnh; bảng tự đóng ngay khi bạn chọn công cụ.',
+      'Theo dõi dòng nhắc 1 dòng ngay phía trên bảng vẽ để biết cần nhấp vào đối tượng nào tiếp theo.',
+      'Dùng phím Esc để quay về công cụ Chọn, Ctrl+Z để hoàn tác và Delete để xóa đối tượng đang chọn.',
+    ],
+    actionLabel: 'Thực hành 2D ngay',
+    actionTarget: 'lab',
+    labMode: '2d',
+  },
+  {
+    id: 'task-tools-3d',
+    number: 3,
+    title: 'Sử dụng công cụ 3D',
+    purpose: 'Tạo 18 hình khối chuẩn Toán 11–12, dựng mặt phẳng, thiết diện, hệ trục Oxyz và đo góc nhị diện.',
+    location: 'Phòng thực hành → thẻ "Dựng hình 3D" → thanh công cụ dọc 8 nhóm bên trái.',
+    steps: [
+      'Chọn Mặt phẳng làm việc (Oxy, Oxz hoặc Oyz) ngay đầu thanh công cụ bên trái trước khi chấm điểm tự do.',
+      'Mở nhóm "Hình khối 3D" để chèn nhanh hình lập phương, hình chóp, lăng trụ, hình cầu, hình trụ hoặc hình nón.',
+      'Mở các nhóm Quan hệ, Thiết diện, Hệ Oxyz hoặc Đo đạc để dựng đường vuông góc, mặt cắt và đo góc/khoảng cách.',
+      'Kéo chuột trái để xoay 360°, cuộn để thu phóng và chọn góc nhìn chuẩn (Trước, Trên, Phối cảnh) ở thanh dưới.',
+    ],
+    actionLabel: 'Thực hành 3D ngay',
+    actionTarget: 'lab',
+    labMode: '3d',
+  },
+  {
+    id: 'task-edit-object',
+    number: 4,
+    title: 'Chỉnh sửa đối tượng',
+    purpose: 'Đổi tên nhãn, màu sắc, kiểu nét liền/nét đứt, độ dày nét, ẩn/hiện hoặc điều chỉnh kích thước hình khối.',
+    location: 'Bảng Danh sách đối tượng & Thuộc tính bên phải bảng vẽ (có thể thu gọn hoặc kéo đổi độ rộng).',
+    steps: [
+      'Chọn công cụ "Chọn" rồi nhấp trực tiếp vào đối tượng trên bảng vẽ hoặc trong Danh sách đối tượng bên phải.',
+      'Thay đổi nhãn hiển thị, màu nét, kiểu nét (nét liền / nét đứt) hoặc kích thước điểm/nét.',
+      'Với hình khối 3D, kéo thanh trượt cạnh, chiều cao, bán kính để hình khối và thể tích cập nhật tức thì.',
+      'Kéo viền mép trái của bảng thuộc tính để điều chỉnh độ rộng phù hợp màn hình trình chiếu.',
+    ],
+    actionLabel: 'Thử chỉnh thuộc tính',
+    actionTarget: 'lab',
+    labMode: '2d',
+  },
+  {
+    id: 'task-open-template',
+    number: 5,
+    title: 'Mở hình mẫu',
+    purpose: 'Mở nhanh các hình mẫu minh họa sẵn (Đường thẳng Euler 2D và 40 hình mẫu Toán 11–12 3D) để dạy và học.',
+    location: 'Phòng thực hành → nút "Mở mẫu" trên thanh trên cùng hoặc thẻ "Thư viện hình mẫu".',
+    steps: [
+      'Nhấn nút "Mở mẫu" trên thanh trên cùng hoặc chuyển sang thẻ "Thư viện hình mẫu".',
+      'Lọc theo Không gian (2D / 3D), Lớp (Toán 11 / Toán 12) hoặc nhập từ khóa tìm kiếm.',
+      'Nhấp vào thẻ hình mẫu để mở trực tiếp trong không gian dựng hình tương ứng.',
+      'Kéo các điểm tự do trên hình mẫu để quan sát các quan hệ hình học thay đổi động.',
+    ],
+    actionLabel: 'Mở Thư viện hình mẫu',
+    actionTarget: 'lab',
+    labMode: 'templates',
+  },
+  {
+    id: 'task-save-drawing',
+    number: 6,
+    title: 'Lưu bản vẽ',
+    purpose: 'Lưu trữ bản vẽ 2D và 3D ngay trên thiết bị, kèm ảnh thu nhỏ, tìm kiếm, nhân bản và xuất ảnh PNG/SVG.',
+    location: 'Thanh trên cùng Phòng thực hành → nút "Lưu bản vẽ" (phím tắt Ctrl+S) và thẻ "Bản vẽ của tôi".',
+    steps: [
+      'Đặt tên bản vẽ rõ ràng bằng cách nhấp vào tiêu đề ở góc trên trái.',
+      'Nhấn nút "Lưu bản vẽ" (hoặc tổ hợp phím Ctrl+S) để lưu vào bộ nhớ thiết bị.',
+      'Mở thẻ "Bản vẽ của tôi" để xem lại toàn bộ bản vẽ 2D và 3D đã lưu, đổi tên trực tiếp hoặc nhân bản.',
+      'Nhấn "Xuất PNG" hoặc "Xuất SVG" khi cần chèn hình vẽ sắc nét vào bài giảng, phiếu học tập hoặc đề thi.',
+    ],
+    actionLabel: 'Xem Bản vẽ của tôi',
+    actionTarget: 'lab',
+    labMode: 'saved',
+  },
+  {
+    id: 'task-challenges',
+    number: 7,
+    title: 'Thực hiện thử thách',
+    purpose: 'Rèn luyện kỹ năng dựng hình qua 180 thử thách 2D và 180 thử thách 3D (18 cấp độ, tối đa 540 sao mỗi hệ).',
+    location: 'Thanh điều hướng trên cùng → mục "Thử thách" → chọn Hình học 3D hoặc Hình học 2D.',
+    steps: [
+      'Vào mục "Thử thách", chọn bộ lọc lớp (Tất cả / Toán 11 / Toán 12 với 3D) và chọn cấp độ muốn luyện.',
+      'Đọc kỹ đề bài, giả thiết và sử dụng các công cụ được cung cấp để dựng đối tượng theo yêu cầu.',
+      'Nhấn "Kiểm chứng" để hệ thống kiểm tra tính chính xác hình học động và chấm điểm 3 sao.',
+      'Mức sao: 3 sao (đúng không cần gợi ý), 2 sao (đúng có dùng gợi ý), 1 sao (đúng sau khi xem lời giải).',
+    ],
+    actionLabel: 'Mở Thử thách 3D',
+    actionTarget: 'campaign',
+    campaignDim: '3d',
+  },
+  {
+    id: 'task-fullscreen',
+    number: 8,
+    title: 'Trình chiếu toàn màn hình',
+    purpose: 'Mở rộng tối đa bảng vẽ để giảng dạy trên máy chiếu, bảng tương tác hoặc màn hình lớn trong lớp học.',
+    location: 'Thanh trên cùng của Phòng thực hành hoặc màn hình Thử thách → nút "Toàn màn hình" / "Trình chiếu".',
+    steps: [
+      'Mở bản vẽ hoặc bài thử thách cần giảng dạy trên lớp.',
+      'Nhấn nút "Toàn màn hình" (hoặc "Trình chiếu" trong 3D) để ẩn thanh phụ và mở rộng khung vẽ tối đa.',
+      'Bật chế độ cỡ chữ lớn trong Cài đặt nếu lớp học rộng cần nhìn rõ nhãn điểm từ xa.',
+      'Nhấn phím Esc hoặc nút "Thoát toàn màn hình" bất cứ lúc nào để quay lại giao diện đầy đủ.',
+    ],
+    actionLabel: 'Thử chế độ Toàn màn hình',
+    actionTarget: 'lab',
+    labMode: '3d',
+  },
+  {
+    id: 'task-offline',
+    number: 9,
+    title: 'Cài đặt offline',
+    purpose: 'Sử dụng toàn bộ ứng dụng không cần đăng nhập và không cần kết nối mạng, kèm sao lưu dữ liệu an toàn.',
+    location: 'Thanh điều hướng → "Mở rộng" → "Cài đặt & Sao lưu" hoặc biểu tượng cài đặt PWA trên trình duyệt.',
+    steps: [
+      'Mở ứng dụng trên Chrome, Edge hoặc Safari và nhấn biểu tượng "Cài đặt ứng dụng" trên thanh địa chỉ.',
+      'Sau khi cài, mở Học Viện Hình Học Smart ngay từ màn hình chính kể cả khi ngắt mạng Internet.',
+      'Vào "Mở rộng → Cài đặt & Sao lưu" và chọn "Xuất tệp sao lưu" định kỳ để lưu trữ thành tích và bản vẽ.',
+      'Khi chuyển sang máy mới, chọn "Nhập & Khôi phục" để khôi phục toàn bộ tiến độ và bản vẽ của bạn.',
+    ],
+    actionLabel: 'Mở Cài đặt & Sao lưu',
+    actionTarget: 'settings',
+  },
+];
 
 interface Guide3DGroup {
   id: string;
@@ -584,9 +749,33 @@ const GROUP_ICONS: React.FC<{ num: number }> = ({ num }) => {
   }
 };
 
+const QuickTaskIcon: React.FC<{ num: number }> = ({ num }) => {
+  const cls = 'w-5 h-5 text-teal-700 dark:text-teal-400';
+  switch (num) {
+    case 1:
+      return <FilePlus2 className={cls} />;
+    case 2:
+      return <Compass className={cls} />;
+    case 3:
+      return <Box className={cls} />;
+    case 4:
+      return <SlidersHorizontal className={cls} />;
+    case 5:
+      return <FolderOpen className={cls} />;
+    case 6:
+      return <Save className={cls} />;
+    case 7:
+      return <Target className={cls} />;
+    case 8:
+      return <Maximize2 className={cls} />;
+    default:
+      return <WifiOff className={cls} />;
+  }
+};
+
 export const GuidePage: React.FC = () => {
-  const { setPage, openChallenge, openLab3DWithScene, setTourOpen } = useApp();
-  const [guideDimension, setGuideDimension] = useState<'2d' | '3d'>('2d');
+  const { setPage, openChallenge, openLab3DWithScene, setTourOpen, setCampaignDimension } = useApp();
+  const [guideTab, setGuideTab] = useState<'quick' | '2d' | '3d'>('quick');
   const [selectedId, setSelectedId] = useState<string>('all');
 
   const visibleGroups =
@@ -606,6 +795,23 @@ export const GuidePage: React.FC = () => {
     setPage(group.actionTarget as Parameters<typeof setPage>[0]);
   };
 
+  const handleQuickTaskAction = (task: QuickTaskGuide) => {
+    if (task.actionTarget === 'campaign') {
+      if (task.campaignDim) setCampaignDimension(task.campaignDim);
+      setPage('campaign');
+      return;
+    }
+    if (task.actionTarget === 'lab') {
+      if (task.labMode === '3d') {
+        setPage('lab');
+        return;
+      }
+      setPage('lab');
+      return;
+    }
+    setPage(task.actionTarget);
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
       {/* Header */}
@@ -613,13 +819,13 @@ export const GuidePage: React.FC = () => {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 text-sm font-semibold text-teal-700 dark:text-teal-400 mb-1.5">
             <HelpCircle className="w-4 h-4" />
-            Cẩm nang sử dụng dành cho học sinh và giáo viên
+            Cẩm nang thao tác ngắn gọn dành cho học sinh và giáo viên
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
             Hướng dẫn sử dụng Học Viện Hình Học Smart
           </h1>
           <p className="text-[15px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
-            12 phần hướng dẫn cụ thể từng bước, viết ngắn gọn dễ hiểu để người mới có thể làm quen, dựng hình bằng thước thẳng và compa, kiểm chứng kết quả và tổ chức học tập hiệu quả.
+            Tra cứu nhanh 9 tác vụ thường dùng nhất theo công dụng, vị trí công cụ và các bước thực hiện ngắn gọn; hoặc xem chi tiết hướng dẫn dựng hình 2D và 3D.
           </p>
         </div>
 
@@ -643,35 +849,105 @@ export const GuidePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Dimension Switcher: 2D (12 parts) vs 3D (6 parts) */}
+      {/* Mode Switcher: Quick 9 tasks | 2D (12 parts) | 3D (6 parts) */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
         <button
           type="button"
-          onClick={() => setGuideDimension('2d')}
+          onClick={() => setGuideTab('quick')}
           className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-semibold transition-colors ${
-            guideDimension === '2d'
+            guideTab === 'quick'
+              ? 'bg-teal-700 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Hướng dẫn nhanh (9 tác vụ cốt lõi)
+        </button>
+        <button
+          type="button"
+          onClick={() => setGuideTab('2d')}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-semibold transition-colors ${
+            guideTab === '2d'
               ? 'bg-teal-700 text-white shadow-xs'
               : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-teal-400'
           }`}
         >
           <Compass className="w-4 h-4" />
-          Hướng dẫn Hình học Phẳng 2D (12 phần)
+          Chi tiết Hình học Phẳng 2D (12 phần)
         </button>
         <button
           type="button"
-          onClick={() => setGuideDimension('3d')}
+          onClick={() => setGuideTab('3d')}
           className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[15px] font-semibold transition-colors ${
-            guideDimension === '3d'
+            guideTab === '3d'
               ? 'bg-sky-600 text-white shadow-xs'
               : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-sky-400'
           }`}
         >
           <Box className="w-4 h-4" />
-          Hướng dẫn Hình học Không gian 3D (6 nhóm thao tác)
+          Chi tiết Hình học Không gian 3D (6 nhóm)
         </button>
       </div>
 
-      {guideDimension === '3d' ? (
+      {guideTab === 'quick' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {QUICK_TASK_GUIDES.map((task) => (
+            <article
+              key={task.id}
+              className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex flex-col justify-between gap-4 shadow-xs"
+            >
+              <div className="space-y-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-100 dark:border-teal-900 flex items-center justify-center shrink-0">
+                    <QuickTaskIcon num={task.number} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
+                      Tác vụ {task.number} / 9
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
+                      {task.title}
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-[15px]">
+                  <p className="text-slate-700 dark:text-slate-200 leading-relaxed">
+                    <strong className="font-semibold text-slate-900 dark:text-white">Công dụng: </strong>
+                    {task.purpose}
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2 border border-slate-200/70 dark:border-slate-700/70">
+                    <strong className="font-semibold text-teal-800 dark:text-teal-300">Vị trí công cụ: </strong>
+                    {task.location}
+                  </p>
+                </div>
+
+                <ol className="space-y-2 text-[15px] text-slate-700 dark:text-slate-200">
+                  {task.steps.map((step, idx) => (
+                    <li key={idx} className="flex items-start gap-2.5 leading-relaxed">
+                      <span className="w-6 h-6 rounded-full bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 font-mono-tabular">
+                        {idx + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => handleQuickTaskAction(task)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-[15px] font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors"
+                >
+                  {task.actionLabel}
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : guideTab === '3d' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {GUIDE_3D_GROUPS.map((g) => {
             const tpl = getTemplate3DById(g.templateId);

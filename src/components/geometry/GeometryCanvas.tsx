@@ -59,6 +59,8 @@ export interface GeometryCanvasProps {
   homothetyFactor?: number;
   regularPolygonSides?: number;
   statusBanner?: string | null;
+  hideBottomGuidance?: boolean;
+  onPendingChange?: (pendingIds: string[]) => void;
 }
 
 interface ViewTransform {
@@ -179,6 +181,8 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
   homothetyFactor = 2,
   regularPolygonSides = 5,
   statusBanner = null,
+  hideBottomGuidance = false,
+  onPendingChange,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -213,6 +217,10 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
   useEffect(() => {
     setPendingIds([]);
   }, [activeTool]);
+
+  useEffect(() => {
+    onPendingChange?.(pendingIds);
+  }, [pendingIds, onPendingChange]);
 
   // Escape cancels current multi-step tool
   useEffect(() => {
@@ -1764,13 +1772,14 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
 
           const offset = pt.style.labelOffset ?? { x: 10, y: -10 };
 
+          const basePtRadius = pt.style.pointSize ?? (isDraggable ? 5.2 : 4.4);
           return (
             <g key={pt.id}>
               {isDraggable && (
                 <circle
                   cx={s.x}
                   cy={s.y}
-                  r={isSel ? 11 : 8.5}
+                  r={isSel ? basePtRadius + 5 : basePtRadius + 3.2}
                   fill={fill}
                   fillOpacity={0.16}
                 />
@@ -1778,7 +1787,7 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
               <circle
                 cx={s.x}
                 cy={s.y}
-                r={isSel ? 6 : isDraggable ? 5.2 : 4.4}
+                r={isSel ? basePtRadius + 1.2 : basePtRadius}
                 fill={fill}
                 stroke={canvasDark ? '#0F172A' : '#FFFFFF'}
                 strokeWidth={2}
@@ -1814,7 +1823,7 @@ export const GeometryCanvas: React.FC<GeometryCanvasProps> = ({
       </svg>
 
       {/* Bottom unobtrusive guidance strip */}
-      {!readOnly && (
+      {!readOnly && !hideBottomGuidance && (
         <div className="absolute bottom-2 left-2.5 right-2.5 z-10 pointer-events-none flex items-center justify-between gap-2">
           <div className="inline-flex items-center gap-2 rounded-lg bg-white/90 dark:bg-slate-900/90 backdrop-blur border border-slate-200/80 dark:border-slate-700/80 px-3 py-1 text-xs text-slate-700 dark:text-slate-200 shadow-sm max-w-[85%] truncate">
             <span className="font-semibold text-teal-700 dark:text-teal-400">

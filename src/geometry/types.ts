@@ -104,6 +104,7 @@ export interface GeoStyle {
   fillColor?: string;
   fillOpacity?: number;
   tickMarks?: 0 | 1 | 2 | 3;
+  pointSize?: number;
 }
 
 export interface GeoObjectBase {

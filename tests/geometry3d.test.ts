@@ -20,7 +20,12 @@ import {
   serializeScene3DToJson,
 } from '../src/geometry3d/export3d';
 import { TEMPLATES_3D } from '../src/geometry3d/templates3d';
-import { ALL_CHALLENGES_3D, LEVELS_3D } from '../src/geometry3d/challenges3d';
+import {
+  ALL_CHALLENGES_3D,
+  LEVELS_3D,
+  TOTAL_POSSIBLE_3D_STARS,
+  calcProgressPercent,
+} from '../src/geometry3d/challenges3d';
 import { validateChallenge3D } from '../src/geometry3d/validator3d';
 import type {
   Geo3DCrossSection,
@@ -307,13 +312,19 @@ describe('40 Editable 3D Templates Integrity', () => {
   });
 });
 
-describe('6 Levels – 60 Spatial 3D Challenges Integrity & Dynamic Validation', () => {
-  it('contains exactly 6 levels and 60 unique 3D challenges (180 max 3D stars)', () => {
-    expect(LEVELS_3D.length).toBe(6);
-    expect(ALL_CHALLENGES_3D.length).toBe(60);
+describe('18 Levels – 180 Spatial 3D Challenges Integrity & Dynamic Validation', () => {
+  it('contains exactly 18 levels and 180 unique 3D challenges (130 Toán 11, 50 Toán 12, 540 max stars)', () => {
+    expect(LEVELS_3D.length).toBe(18);
+    expect(ALL_CHALLENGES_3D.length).toBe(180);
+    expect(TOTAL_POSSIBLE_3D_STARS).toBe(540);
+
+    const grade11Count = ALL_CHALLENGES_3D.filter((c) => c.curriculumTag === 'Toán 11').length;
+    const grade12Count = ALL_CHALLENGES_3D.filter((c) => c.curriculumTag === 'Toán 12').length;
+    expect(grade11Count).toBe(130);
+    expect(grade12Count).toBe(50);
 
     const ids = new Set<string>();
-    for (let lvl = 1; lvl <= 6; lvl++) {
+    for (let lvl = 1; lvl <= 18; lvl++) {
       const list = ALL_CHALLENGES_3D.filter((c) => c.levelId === lvl);
       expect(list.length).toBe(10);
       for (const c of list) {
@@ -323,10 +334,18 @@ describe('6 Levels – 60 Spatial 3D Challenges Integrity & Dynamic Validation',
         expect(c.solutionSteps.length).toBeGreaterThan(0);
       }
     }
-    expect(ALL_CHALLENGES_3D.length * 3).toBe(180);
+    expect(ALL_CHALLENGES_3D.length * 3).toBe(540);
   });
 
-  it('validates canonical solution of EVERY SINGLE ONE of the 60 3D challenges across multi-config checks', () => {
+  it('computes safe progress percentage without division by zero or false 100%', () => {
+    expect(calcProgressPercent(0, 10)).toBe(0);
+    expect(calcProgressPercent(0, 0)).toBe(0);
+    expect(calcProgressPercent(5, 10)).toBe(50);
+    expect(calcProgressPercent(10, 10)).toBe(100);
+    expect(calcProgressPercent(180, 180)).toBe(100);
+  });
+
+  it('rejects empty initial scene and validates canonical solution with exact 3/2/1/0 star scoring for ALL 180 challenges', () => {
     const failures: string[] = [];
 
     for (const ch of ALL_CHALLENGES_3D) {
@@ -336,13 +355,36 @@ describe('6 Levels – 60 Spatial 3D Challenges Integrity & Dynamic Validation',
           failures.push(`${ch.id} (${ch.title}): invalid initial object ${id}`);
         }
       }
+
+      const emptyReport = validateChallenge3D(ch, scene);
+      if (emptyReport.passed || emptyReport.stars !== 0) {
+        failures.push(
+          `${ch.id} (${ch.title}): initial scene unexpectedly passed (passed=${emptyReport.passed}, stars=${emptyReport.stars})`
+        );
+      }
+
       for (const step of ch.solutionSteps) {
         scene = addGeo3DObject(scene, step.addInput).scene;
       }
-      const report = validateChallenge3D(ch, scene);
-      if (!report.passed) {
+
+      const cleanReport = validateChallenge3D(ch, scene);
+      if (!cleanReport.passed || cleanReport.stars !== 3) {
         failures.push(
-          `${ch.id} (${ch.title}): FAILED [${report.status}] — ${report.message} | ${report.details.join('; ')}`
+          `${ch.id} (${ch.title}): FAILED clean [${cleanReport.status}] stars=${cleanReport.stars} — ${cleanReport.message} | ${cleanReport.details.join('; ')}`
+        );
+      }
+
+      const hintReport = validateChallenge3D(ch, scene, { hintsUsed: 1, viewedSolution: false });
+      if (!hintReport.passed || hintReport.stars !== 2) {
+        failures.push(
+          `${ch.id} (${ch.title}): expected 2 stars with hints, got passed=${hintReport.passed}, stars=${hintReport.stars}`
+        );
+      }
+
+      const solReport = validateChallenge3D(ch, scene, { hintsUsed: 0, viewedSolution: true });
+      if (!solReport.passed || solReport.stars !== 1) {
+        failures.push(
+          `${ch.id} (${ch.title}): expected 1 star after viewing solution, got passed=${solReport.passed}, stars=${solReport.stars}`
         );
       }
     }
