@@ -52,7 +52,7 @@ export const HomePage: React.FC = () => {
       {/* Hero Section */}
       <section className="relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <div className="bg-geo-grid px-6 sm:px-10 py-10 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-6 space-y-6">
+          <div className="lg:col-span-6 min-w-0 space-y-6">
             <div className="text-sm font-semibold text-teal-700 dark:text-teal-400 tracking-wide uppercase leading-snug break-words">
               Không gian hình học tương tác 2D &amp; 3D
             </div>
@@ -118,42 +118,46 @@ export const HomePage: React.FC = () => {
           </div>
 
           {/* Dual 2D + Live Animated 3D Geometric Visual */}
-          <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-stretch">
+          <div className="lg:col-span-6 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
             {/* 2D Figure Card */}
-            <div className="rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 p-3.5 shadow-sm flex flex-col justify-between">
-              <svg viewBox="0 0 360 250" className="w-full h-44" role="img" aria-label="Sơ đồ dựng hình tam giác đều 2D minh họa">
-                <defs>
-                  <linearGradient id="heroTri" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#0F766E" stopOpacity="0.18" />
-                    <stop offset="100%" stopColor="#0284C7" stopOpacity="0.10" />
-                  </linearGradient>
-                </defs>
-                <circle cx="130" cy="175" r="100" fill="none" stroke="#0284C7" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.65" />
-                <circle cx="230" cy="175" r="100" fill="none" stroke="#0284C7" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.65" />
-                <circle cx="180" cy="146.1" r="57.7" fill="none" stroke="#7C3AED" strokeWidth="1.5" opacity="0.6" />
-                <line x1="180" y1="26" x2="180" y2="232" stroke="#D97706" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.8" />
-                <polygon points="130,175 230,175 180,88.4" fill="url(#heroTri)" stroke="#0F766E" strokeWidth="2.6" />
-                <rect x="180" y="164" width="11" height="11" fill="none" stroke="#D97706" strokeWidth="1.6" />
-                <circle cx="130" cy="175" r="5.5" fill="#0F766E" stroke="#FFFFFF" strokeWidth="2" />
-                <circle cx="230" cy="175" r="5.5" fill="#0F766E" stroke="#FFFFFF" strokeWidth="2" />
-                <circle cx="180" cy="88.4" r="6" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="2" />
-                <circle cx="180" cy="146.1" r="4.5" fill="#7C3AED" stroke="#FFFFFF" strokeWidth="1.8" />
-                <circle cx="180" cy="175" r="4.2" fill="#0284C7" stroke="#FFFFFF" strokeWidth="1.8" />
-                <text x="112" y="192" fontSize="14" fontWeight="700" fill="currentColor" className="text-slate-800 dark:text-slate-100">A</text>
-                <text x="239" y="192" fontSize="14" fontWeight="700" fill="currentColor" className="text-slate-800 dark:text-slate-100">B</text>
-                <text x="188" y="82" fontSize="14" fontWeight="700" fill="#D97706">C</text>
-                <text x="188" y="144" fontSize="12" fontWeight="700" fill="#7C3AED">O</text>
-                <text x="186" y="192" fontSize="12" fontWeight="700" fill="#0284C7">M</text>
-              </svg>
-              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                <span className="font-semibold text-teal-700 dark:text-teal-400">Hình học phẳng 2D</span>
+            <div className="min-w-0 h-full rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white/95 dark:bg-slate-950/90 p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="h-44 flex items-center justify-center">
+                <svg viewBox="0 0 360 250" className="w-full h-full" role="img" aria-label="Sơ đồ dựng hình tam giác đều 2D minh họa">
+                  <defs>
+                    <linearGradient id="heroTri" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#0F766E" stopOpacity="0.18" />
+                      <stop offset="100%" stopColor="#0284C7" stopOpacity="0.10" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="130" cy="175" r="100" fill="none" stroke="#0284C7" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.65" />
+                  <circle cx="230" cy="175" r="100" fill="none" stroke="#0284C7" strokeWidth="1.4" strokeDasharray="5 4" opacity="0.65" />
+                  <circle cx="180" cy="146.1" r="57.7" fill="none" stroke="#7C3AED" strokeWidth="1.5" opacity="0.6" />
+                  <line x1="180" y1="26" x2="180" y2="232" stroke="#D97706" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.8" />
+                  <polygon points="130,175 230,175 180,88.4" fill="url(#heroTri)" stroke="#0F766E" strokeWidth="2.6" />
+                  <rect x="180" y="164" width="11" height="11" fill="none" stroke="#D97706" strokeWidth="1.6" />
+                  <circle cx="130" cy="175" r="5.5" fill="#0F766E" stroke="#FFFFFF" strokeWidth="2" />
+                  <circle cx="230" cy="175" r="5.5" fill="#0F766E" stroke="#FFFFFF" strokeWidth="2" />
+                  <circle cx="180" cy="88.4" r="6" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="2" />
+                  <circle cx="180" cy="146.1" r="4.5" fill="#7C3AED" stroke="#FFFFFF" strokeWidth="1.8" />
+                  <circle cx="180" cy="175" r="4.2" fill="#0284C7" stroke="#FFFFFF" strokeWidth="1.8" />
+                  <text x="112" y="192" fontSize="14" fontWeight="700" fill="currentColor" className="text-slate-800 dark:text-slate-100">A</text>
+                  <text x="239" y="192" fontSize="14" fontWeight="700" fill="currentColor" className="text-slate-800 dark:text-slate-100">B</text>
+                  <text x="188" y="82" fontSize="14" fontWeight="700" fill="#D97706">C</text>
+                  <text x="188" y="144" fontSize="12" fontWeight="700" fill="#7C3AED">O</text>
+                  <text x="186" y="192" fontSize="12" fontWeight="700" fill="#0284C7">M</text>
+                </svg>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[13.5px] leading-snug text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-teal-700 dark:text-teal-400 min-w-0">
+                  Hình học phẳng 2D
+                </span>
                 <button
                   type="button"
                   onClick={() => {
                     setLabSubView('2d');
                     setPage('lab');
                   }}
-                  className="font-semibold hover:text-teal-700 hover:underline"
+                  className="ml-auto inline-flex items-center gap-1 py-0.5 font-semibold text-slate-700 dark:text-slate-200 hover:text-teal-700 dark:hover:text-teal-300 hover:underline whitespace-nowrap shrink-0"
                 >
                   Mở 2D →
                 </button>
@@ -161,8 +165,8 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* Live Code-Driven 3D Figure Card (Zero Three.js on Homepage) */}
-            <div className="rounded-2xl border border-sky-200/90 dark:border-sky-800/70 bg-white/95 dark:bg-slate-950/90 p-3.5 shadow-sm flex flex-col justify-between">
-              <div className="h-44">
+            <div className="min-w-0 h-full rounded-2xl border border-sky-200/90 dark:border-sky-800/70 bg-white/95 dark:bg-slate-950/90 p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="h-44 flex items-center justify-center">
                 <LiveGeo3DPreview
                   variant="hero_pyramid"
                   width={320}
@@ -171,15 +175,17 @@ export const HomePage: React.FC = () => {
                   reducedMotion={settings.reducedMotion}
                 />
               </div>
-              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                <span className="font-semibold text-sky-700 dark:text-sky-400">Không gian 3D &amp; Oxyz</span>
+              <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[13.5px] leading-snug text-slate-600 dark:text-slate-400">
+                <span className="font-semibold text-sky-700 dark:text-sky-400 min-w-0">
+                  Không gian 3D &amp; Oxyz
+                </span>
                 <button
                   type="button"
                   onClick={() => {
                     setLabSubView('3d');
                     setPage('lab');
                   }}
-                  className="font-semibold hover:text-sky-700 hover:underline"
+                  className="ml-auto inline-flex items-center gap-1 py-0.5 font-semibold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-300 hover:underline whitespace-nowrap shrink-0"
                 >
                   Mở 3D →
                 </button>

@@ -46,10 +46,10 @@ const AppShell: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F5F9FC] dark:bg-slate-950 text-[#172033] dark:text-slate-100 transition-colors">
+    <div className="min-h-screen flex flex-col min-w-0 bg-[#F5F9FC] dark:bg-slate-950 text-[#172033] dark:text-slate-100 transition-colors">
       <OfflineIndicator />
       <Header />
-      <main className="flex-1">{renderPage()}</main>
+      <main className="flex-1 min-w-0">{renderPage()}</main>
       <Footer />
       <OnboardingTour />
     </div>

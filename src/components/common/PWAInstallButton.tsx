@@ -4,14 +4,19 @@ import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface PWAInstallButtonProps {
   compact?: boolean;
+  /** Render as a compact icon button with clear tooltip when header space is tight */
+  iconOnly?: boolean;
 }
 
-export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ compact = false }) => {
+export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
+  compact = false,
+  iconOnly = false,
+}) => {
   const { canInstall, isInstalled, promptInstall } = usePWAInstall();
   const [showManualGuide, setShowManualGuide] = useState(false);
 
   if (isInstalled) {
-    if (compact) return null;
+    if (compact || iconOnly) return null;
     return (
       <div className="inline-flex items-center gap-2 text-sm text-teal-700 dark:text-teal-300 font-medium">
         <CheckCircle2 className="w-4 h-4" />
@@ -33,18 +38,23 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ compact = fa
       <button
         type="button"
         onClick={() => void handleClick()}
-        className={`inline-flex items-center gap-1.5 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/70 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors whitespace-nowrap shrink-0 ${
-          compact ? 'px-2.5 py-1.5 text-xs font-semibold' : 'px-4 py-2 text-sm font-semibold'
+        className={`inline-flex items-center justify-center gap-1.5 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/60 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900/70 transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 ${
+          iconOnly
+            ? 'w-9 h-9 p-0'
+            : compact
+            ? 'h-9 px-3 text-sm font-semibold'
+            : 'px-4 py-2 text-sm font-semibold'
         }`}
-        title="Cài đặt ứng dụng để học ngoại tuyến không cần mạng"
+        title="Cài ứng dụng để học ngoại tuyến không cần mạng"
+        aria-label="Cài ứng dụng"
       >
         <Download className="w-4 h-4 shrink-0" />
-        <span>{compact ? 'Cài ứng dụng' : 'Cài đặt ứng dụng (PWA)'}</span>
+        {!iconOnly && <span>{compact ? 'Cài ứng dụng' : 'Cài đặt ứng dụng (PWA)'}</span>}
       </button>
 
       {showManualGuide && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
           onClick={() => setShowManualGuide(false)}
         >
           <div
@@ -60,6 +70,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ compact = fa
                 type="button"
                 onClick={() => setShowManualGuide(false)}
                 className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Đóng hướng dẫn cài đặt"
               >
                 <X className="w-4 h-4" />
               </button>
